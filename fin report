@@ -1,0 +1,140 @@
+# Sallie Mae → SoFi Refinance Analysis
+### Fixed-rate refinance decision report — prepared July 1, 2026
+
+> **Disclaimer:** This report is an independent numerical analysis and research summary, not licensed financial advice. Confirm final payoff amounts with Sallie Mae and final terms with SoFi before signing.
+
+---
+
+## 1. Your current situation
+
+You hold five private Sallie Mae student loans. Their rates have climbed toward the ~12% range on variable terms, which is why refinancing into a **fixed** rate now makes sense.
+
+| Loan | Balance | Rate |
+|---|---|---|
+| Loan 1 | $2,068 | 10.50% |
+| Loan 2 | $7,209 | 9.70% |
+| Loan 3 | $9,804 | 11.25% |
+| Loan 4 | $10,564 | 10.80% |
+| Loan 5 | $8,954 | 11.25% |
+| **Total** | **$38,599** | **10.80% weighted average** |
+
+At the current weighted average of 10.80%, these loans generate roughly **$347 of interest every month** before a single dollar touches principal. That is the number the refinance is fighting.
+
+**A note on the SoFi quotes you received.** All five quoted payments imply a financed amount of about **$39,155**, not $38,599. The extra ~$556 is almost certainly accrued interest included in the payoff quote (about 1.6 months of interest at your current rates). The quotes are internally consistent and mathematically correct — this is normal, not a red flag. The analysis below uses the $39,155 payoff figure.
+
+All five SoFi options you were quoted are **fixed** rates, which is what you asked for: the rate and payment never change for the life of the loan, unlike your current variable Sallie Mae loans.
+
+---
+
+## 2. Question 1: Pay off the $2,068 loan in cash, or roll it into the refinance?
+
+First, a terminology note: student loan refinancing has **no down payment**. There is nothing to "put down." What you *can* do is pay off one loan in cash before refinancing, so you borrow less. That is the real question, and the answer is:
+
+**Pay off the $2,068 loan in cash before you refinance — if doing so doesn't drain your emergency fund.**
+
+The reasoning: paying off that loan is a guaranteed, tax-free return equal to whatever rate the money would otherwise sit at inside the refinance (5.00%–6.01%). No savings account pays a guaranteed 5–6%. Concretely, if you roll that ~$2,098 payoff into the new loan instead of paying it off, it costs you:
+
+| Plan | Extra monthly payment | Extra interest over the term |
+|---|---|---|
+| 5.00% / 5 yr | +$39.59/mo | $278 |
+| 5.21% / 7 yr | +$29.86/mo | $410 |
+| 5.51% / 10 yr | +$22.78/mo | $636 |
+| 5.81% / 15 yr | +$17.49/mo | $1,050 |
+| 6.01% / 20 yr | +$15.04/mo | $1,512 |
+
+Two practical checks before you do it: (1) SoFi's minimum refinance amount is $5,000 — you'd still be refinancing ~$37,057, so no problem there; and (2) keep at least a small cash buffer. If paying $2,068 would leave you with nothing for emergencies, roll it into the loan instead — the cost of doing so on the shorter terms ($278–$636) is cheap insurance compared to missing a payment later.
+
+One caveat that cuts the other way: paying extra *into the refinanced loan later* achieves nearly the same savings, because SoFi has no prepayment penalty. So this decision is helpful but not make-or-break. The rate you lock and the discipline of extra payments matter far more.
+
+---
+
+## 3. Full plan comparison
+
+### Scenario A — refinance the full payoff (~$39,155)
+
+| Plan | Monthly payment | Months | Total paid | Total interest |
+|---|---|---|---|---|
+| 5.00% / 5 yr | $738.96 | 60 | $44,338 | $5,183 |
+| 5.21% / 7 yr | $557.22 | 84 | $46,806 | $7,651 |
+| 5.51% / 10 yr | $425.11 | 120 | $51,013 | $11,858 |
+| 5.81% / 15 yr | $326.42 | 180 | $58,756 | $19,601 |
+| 6.01% / 20 yr | $280.78 | 240 | $67,387 | $28,232 |
+
+### Scenario B — pay off the $2,068 loan first, refinance ~$37,057
+
+| Plan | Monthly payment | Months | Total paid | Total interest |
+|---|---|---|---|---|
+| 5.00% / 5 yr | ~$699.31 | 60 | $41,959 | $4,902 |
+| 5.21% / 7 yr | ~$527.42 | 84 | $44,304 | $7,247 |
+| 5.51% / 10 yr | ~$402.35 | 120 | $48,282 | $11,225 |
+| 5.81% / 15 yr | ~$308.92 | 180 | $55,605 | $18,548 |
+| 6.01% / 20 yr | ~$265.70 | 240 | $63,768 | $26,711 |
+
+### Differences between adjacent plans (Scenario A)
+
+Going from the 5-year to the 7-year plan buys you $181.74/month of breathing room and costs $2,469 in extra interest. From 7-year to 10-year: $132.11/month cheaper, $4,207 more interest. From 10-year to 15-year: $98.69/month cheaper, $7,742 more interest. From 15-year to 20-year: $45.64/month cheaper, $8,632 more interest. Notice the pattern — each step down in payment gets more expensive per dollar of relief. The 15→20 year step is by far the worst trade: you save only $46/month but pay $8,632 for it.
+
+### The cost of doing nothing
+
+If you kept the Sallie Mae loans at ~10.8% and paid $425.11/month (the same as the 10-year SoFi payment), you would be paying for **16.4 years** and hand over roughly **$44,600 in interest**. The same $425.11 on the 5.51% refinance finishes in 10 years with **$11,858 in interest**. Refinancing at that payment level saves you on the order of **$33,000**. Every plan on the table beats staying put — the refinance decision itself is not close.
+
+---
+
+## 4. The extra-payment strategy (this changes the whole decision)
+
+SoFi confirmed — and its published policy states — there are **no prepayment penalties**, no application fees, and no origination fees. Extra payments go straight at the balance. This has a big strategic consequence:
+
+**The required payment is a floor, not a ceiling. So the real question is: what is the lowest payment you can *always* make, even in a bad month?**
+
+Because all five rates are close (5.00%–6.01%), the plan mostly determines your *obligation*, not your destiny. Two illustrations from the simulation:
+
+If you take the **20-year plan ($280.78 required)** but actually pay $738.96 every month, you pay it off in 5.2 years with $6,462 interest — only ~$1,279 more than the actual 5-year plan, while keeping the right to drop to $280.78 any month things get tight. That flexibility costs roughly $21/month of extra interest.
+
+If you take the **10-year plan ($425.11 required)** and pay $738.96, you finish in about 5.1 years with ~$5,752 interest — only ~$570 more than the 5-year plan, with a much safer floor.
+
+The decision rule that falls out of the math: **choose the plan with the lowest rate whose *required* payment you can guarantee in your worst realistic month, then throw every spare dollar at it.** Since lower rate always wins at any given actual payment, never pick a longer term than your safety floor requires. For most budgets, the 7-year (5.21%) or 10-year (5.51%) plan is the sweet spot for a drilling Guard member with variable income: a survivable floor, a near-best rate.
+
+Also stack the discounts: SoFi's **0.25% autopay** rate reduction (and a further 0.125% with SoFi Plus direct deposit) applies to refinance loans — ask whether your quoted rates already include it. On $39,155, 0.25% is roughly $95/year at the start.
+
+---
+
+## 5. Best option by monthly budget
+
+Because the rates rise with term length, the best plan at any budget is always the **lowest-rate plan whose required payment fits**, with the whole budget paid every month:
+
+| Your monthly budget | Best plan | Payoff time | Total interest |
+|---|---|---|---|
+| ~$281–$326 | 6.01% / 20 yr | up to 20 yr | up to $28,232 |
+| ~$327–$425 | 5.81% / 15 yr | 14.8 yr at $330 | ~$19,222 at $330 |
+| ~$426–$557 | 5.51% / 10 yr | 9.9 yr at $430 | ~$11,669 at $430 |
+| ~$558–$738 | 5.21% / 7 yr | 6.0 yr at $640 | ~$6,454 at $640 |
+| $739+ | 5.00% / 5 yr | 3.6 yr at $1,000 | ~$3,680 at $1,000 |
+
+The interactive HTML report (`index.html`) includes a slider where you can set any monthly amount and see payoff time and total interest for every affordable plan, with the winner highlighted, in both Scenario A and Scenario B.
+
+---
+
+## 6. National Guard + student: verified policies and better options
+
+You asked me to verify the policies and research whether there is a better option for someone who is in the National Guard and a student at the same time. Here is what checks out, what doesn't apply, and what to do about it.
+
+**SoFi policy verification — confirmed.** SoFi charges no application fee, no origination fee, and no prepayment penalty on student loan refinancing; fixed-rate options are real and the rate never changes; the minimum refinance amount is $5,000; loans are serviced by MOHELA; a 0.25% autopay discount is available. One honest limitation: a SoFi loan is still a private loan, so it will never have income-driven repayment or federal forgiveness — but your Sallie Mae loans are private too, so **you are not giving up any federal benefits by doing this refinance.** That is the trap that catches most people, and it does not apply to you.
+
+**SCRA 6% interest cap — read this before you sign.** Under the Servicemembers Civil Relief Act, debt you incurred *before* entering military service is capped at 6% interest during periods of qualifying active duty — and this explicitly covers private student loans and National Guard members on Title 10 orders or qualifying Title 32 orders over 30 days. Two implications for you. First, if you took the Sallie Mae loans before you joined the Guard and you get activated, you could demand those 9.7–11.25% rates drop to 6% for the duration of orders (send the lender written notice plus a copy of orders, up to 180 days after service ends; excess interest must be refunded). Second — and this is the key nuance — **refinancing creates a new loan originated during your service, which is generally not eligible for the SCRA cap.** In your case this barely matters, because your new fixed rates (5.00–6.01%) are already at or below the 6% cap, permanently, without needing orders. But if you were choosing the 20-year 6.01% plan *and* expected long activations, know that you're trading away a conditional 6% cap for a permanent 6.01% rate. If you are activated *right now* on qualifying orders, consider invoking SCRA on the Sallie Mae loans first and refinancing after you demobilize.
+
+**Army National Guard Student Loan Repayment Program (SLRP) — the catch that matters most.** The Guard's SLRP can repay up to $50,000 (paid annually, up to ~$8,333/year per current terms) for soldiers who contract into a critical-skill vacancy for a 6- or 8-year term, with payments sent directly to the lender. **But SLRP covers qualifying *federal* loans — private Sallie Mae or SoFi loans are generally not eligible.** So SLRP unfortunately does not rescue this particular debt. If you ever re-enlist or extend, talk to your unit's education/incentives office *before* signing, because SLRP eligibility is locked in at contract time — but do not delay this refinance waiting on it.
+
+**Oklahoma-specific benefits — use these for the "student" half.** Since you're in Oklahoma: the **Oklahoma National Guard Educational Assistance Program (SB 1418, effective 2022)** waives resident tuition and mandatory academic fees at Oklahoma public colleges and universities for active Guard members, up to 18 credit hours per semester, requiring a 2.0 GPA and satisfactory Guard participation. Stack that with **Federal Tuition Assistance** and the **Montgomery GI Bill – Selected Reserve (Chapter 1606)** monthly stipend. Translation: while you remain in the Guard, you should not need to borrow another dollar for tuition in Oklahoma — the biggest "better option" available to you isn't a lower rate, it's making sure this $38,599 is the *last* student debt you ever take on.
+
+**Is there a better lender than SoFi?** SoFi's terms (no fees, no prepayment penalty, fixed 5.00–6.01% for your profile) are competitive. Before signing, it costs nothing but soft credit pulls to rate-check two or three others in the same week: **Navy Federal Credit Union** and **PenFed** (both serve Guard members; PenFed also has no fees), plus **Earnest** or **Laurel Road**, and **Credible/Bankrate** style marketplaces to see multiple quotes at once. If nobody beats 5.00–5.51% fixed for your term, take the SoFi offer with autopay enabled. Do not slow-roll this — every month of delay at 10.8% costs you about $347 minus what a refinanced month would cost, roughly **$165–$170 of pure waste per month**.
+
+---
+
+## 7. Bottom-line recommendation
+
+Refinance — every option beats staying at 10.8% variable, and fixed protects you from the climb toward 12%. Pay off the $2,068 loan in cash first if your emergency fund survives it. Choose the shortest term whose *required* payment you can guarantee in your worst month — for most drilling Guard members with student schedules that's the **7-year 5.21% ($557.22)** or **10-year 5.51% ($425.11)** plan — then pay more than the minimum every month you can, since there's no prepayment penalty and the extra goes straight at principal. Enroll in autopay for the 0.25% discount. If you're activated on qualifying orders before signing, invoke SCRA on the old loans first and refinance after. Use the Oklahoma tuition waiver, Federal TA, and MGIB-SR so you never borrow for school again.
+
+---
+
+### Sources consulted
+SoFi refinance rates and fee disclosures (sofi.com/refinance-student-loan, sofi.com support); U.S. Department of Justice Servicemembers and Veterans Initiative — SCRA 6% cap guidance; Consumer Financial Protection Bureau — military student loan relief; Army National Guard SLRP terms (nationalguard.com); Oklahoma National Guard Educational Assistance Act coverage (Oklahoma Senate, Oklahoma State Regents for Higher Education).
