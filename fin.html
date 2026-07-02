@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Refinance Console — Sallie Mae → SoFi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#1C241D;
+  --paper:#EDEFE8;
+  --panel:#FFFFFF;
+  --brass:#96772A;
+  --brass-soft:#F3ECD8;
+  --green:#2F6B45;
+  --green-soft:#E3EDE5;
+  --rust:#9E3B22;
+  --rust-soft:#F5E4DE;
+  --line:#C9CEC2;
+  --mut:#5C665C;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --disp:'Saira Condensed',Impact,sans-serif;
+  --body:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto} *{transition:none!important;animation:none!important}}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55}
+.wrap{max-width:1060px;margin:0 auto;padding:0 20px}
+a{color:var(--green)}
+:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+
+/* header */
+header{border-bottom:2px solid var(--ink);padding:34px 0 22px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+h1{font-family:var(--disp);font-weight:700;font-size:clamp(38px,6vw,64px);line-height:.95;text-transform:uppercase;letter-spacing:.01em;margin-top:8px}
+h1 .arrow{color:var(--brass)}
+.hstrip{display:flex;gap:0;margin-top:22px;border:1.5px solid var(--ink);background:var(--panel);flex-wrap:wrap}
+.hcell{flex:1 1 160px;padding:12px 16px;border-right:1.5px solid var(--ink)}
+.hcell:last-child{border-right:none}
+.hcell .k{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mut)}
+.hcell .v{font-family:var(--mono);font-size:22px;font-weight:600;margin-top:2px}
+.hcell .v.bad{color:var(--rust)} .hcell .v.good{color:var(--green)}
+
+/* sections */
+section{padding:40px 0 8px}
+h2{font-family:var(--disp);font-weight:700;font-size:clamp(24px,3.4vw,34px);text-transform:uppercase;letter-spacing:.02em}
+h2 .num{color:var(--brass);margin-right:10px;font-family:var(--mono);font-size:.65em;vertical-align:.18em}
+.lead{max-width:70ch;color:var(--ink);margin:10px 0 4px}
+.small{font-size:13.5px;color:var(--mut)}
+
+/* verdict */
+.verdict{margin-top:26px;background:var(--ink);color:#F2F4EE;padding:22px 24px;border-left:8px solid var(--brass)}
+.verdict b{color:#FFD98A;font-weight:600}
+.verdict .tag{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);display:block;margin-bottom:6px}
+
+/* q1 cards */
+.q1grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+@media(max-width:720px){.q1grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1.5px solid var(--ink);padding:18px 20px;position:relative}
+.card.win{border-color:var(--green);box-shadow:6px 6px 0 var(--green-soft)}
+.card h3{font-family:var(--disp);text-transform:uppercase;font-size:20px;font-weight:600}
+.badge{position:absolute;top:-12px;right:14px;background:var(--green);color:#fff;font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;padding:3px 10px}
+.card p{margin-top:8px;font-size:14.5px}
+.card .fig{font-family:var(--mono);font-size:14px;margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+
+/* table */
+.tablewrap{overflow-x:auto;margin-top:18px;border:1.5px solid var(--ink);background:var(--panel)}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;text-align:right;padding:10px 14px;background:var(--ink);color:#EDEFE8}
+th:first-child{text-align:left}
+td{font-family:var(--mono);font-size:14px;padding:9px 14px;text-align:right;border-top:1px solid var(--line)}
+td:first-child{text-align:left;font-weight:600}
+tr.old td{color:var(--rust)}
+td .yr{color:var(--mut);font-size:12px}
+
+/* slider console — signature element */
+.console{margin-top:22px;background:var(--panel);border:2px solid var(--ink);box-shadow:10px 10px 0 rgba(28,36,29,.12)}
+.console-top{display:flex;flex-wrap:wrap;align-items:stretch;border-bottom:2px solid var(--ink)}
+.dial{flex:1 1 300px;padding:20px 24px;border-right:2px solid var(--ink)}
+@media(max-width:760px){.dial{border-right:none;border-bottom:2px solid var(--ink)}}
+.dial .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+#budgetVal{font-family:var(--mono);font-weight:600;font-size:clamp(42px,7vw,60px);line-height:1;color:var(--ink)}
+#budgetVal span{font-size:.45em;color:var(--mut)}
+input[type=range]{width:100%;margin-top:14px;accent-color:var(--brass);height:28px;cursor:pointer}
+.presets{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.presets button{font-family:var(--mono);font-size:12px;padding:4px 10px;border:1.5px solid var(--ink);background:var(--paper);cursor:pointer}
+.presets button:hover{background:var(--brass-soft)}
+.scen{flex:0 1 300px;padding:20px 24px;display:flex;flex-direction:column;gap:10px;justify-content:center}
+.scen .k{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.scen label{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer}
+.scen input{accent-color:var(--green);margin-top:3px}
+.scen .amt{font-family:var(--mono);color:var(--mut);font-size:12.5px}
+
+/* plan rows */
+.rows{padding:10px 24px 22px}
+.planrow{display:grid;grid-template-columns:150px 1fr 210px;gap:14px;align-items:center;padding:13px 0;border-bottom:1px dashed var(--line)}
+.planrow:last-child{border-bottom:none}
+@media(max-width:760px){.planrow{grid-template-columns:110px 1fr;grid-template-rows:auto auto}.planstats{grid-column:1/-1;text-align:left!important}}
+.planname{font-family:var(--disp);font-size:19px;font-weight:600;text-transform:uppercase;line-height:1.1}
+.planname .req{display:block;font-family:var(--mono);font-size:11.5px;font-weight:400;text-transform:none;color:var(--mut)}
+.track{position:relative;height:26px;background:var(--paper);border:1px solid var(--line)}
+.fill{position:absolute;left:0;top:0;bottom:0;background:var(--green);opacity:.85;transition:width .25s ease}
+.fill.na{background:repeating-linear-gradient(45deg,var(--rust-soft),var(--rust-soft) 6px,#fff 6px,#fff 12px)}
+.tracklbl{position:absolute;left:8px;top:50%;transform:translateY(-50%);font-family:var(--mono);font-size:11.5px;color:#fff;mix-blend-mode:normal;white-space:nowrap}
+.planstats{font-family:var(--mono);font-size:13.5px;text-align:right;line-height:1.4}
+.planstats .int{font-weight:600}
+.planrow.best .planname{color:var(--green)}
+.planrow.best .chev{display:inline-block;background:var(--brass);color:#fff;font-family:var(--mono);font-size:10px;letter-spacing:.12em;padding:2px 7px;margin-left:6px;vertical-align:middle;text-transform:uppercase}
+.chev{display:none}
+.planrow.na .planname,.planrow.na .planstats{color:var(--rust);opacity:.75}
+.consfoot{border-top:2px solid var(--ink);padding:14px 24px;font-size:14px;background:var(--green-soft)}
+.consfoot b{font-family:var(--mono)}
+
+/* checklist */
+.check{margin-top:18px;display:grid;gap:12px}
+.checkitem{background:var(--panel);border:1.5px solid var(--ink);border-left:8px solid var(--brass);padding:14px 18px}
+.checkitem.warn{border-left-color:var(--rust)}
+.checkitem.go{border-left-color:var(--green)}
+.checkitem h4{font-family:var(--disp);text-transform:uppercase;font-size:17px;font-weight:600}
+.checkitem p{font-size:14px;margin-top:4px}
+
+footer{margin-top:48px;border-top:2px solid var(--ink);padding:22px 0 46px;font-size:12.5px;color:var(--mut)}
+footer p{max-width:90ch}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="eyebrow">Refinance decision console · Fixed-rate · Prepared 01 Jul 2026</div>
+    <h1>Sallie Mae <span class="arrow">→</span> SoFi</h1>
+    <div class="hstrip">
+      <div class="hcell"><div class="k">Balance (5 loans)</div><div class="v">$38,599</div></div>
+      <div class="hcell"><div class="k">Payoff quote</div><div class="v">≈$39,155</div></div>
+      <div class="hcell"><div class="k">Current rate (wtd)</div><div class="v bad">10.80% var</div></div>
+      <div class="hcell"><div class="k">New rate range</div><div class="v good">5.00–6.01% fixed</div></div>
+      <div class="hcell"><div class="k">Interest bleed / mo</div><div class="v bad">$347</div></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section>
+  <div class="verdict">
+    <span class="tag">Verdict</span>
+    Refinance. Every SoFi option beats 10.80% variable, and fixed stops the climb toward 12%. Pay off the <b>$2,068 loan in cash first</b> if your emergency fund survives it. Then pick the <b>shortest term whose required payment you can guarantee in your worst month</b> — and pay more whenever you can, because SoFi has <b>no prepayment penalty</b>. Staying put at $425/mo would cost ≈$44,600 in interest over 16.4 years; the 10-yr refinance at the same payment costs $11,858. That's ≈<b>$33,000 saved</b>.
+  </div>
+</section>
+
+<section id="q1">
+  <h2><span class="num">01</span>Pay off the $2,068 loan, or roll it in?</h2>
+  <p class="lead">There's no "down payment" in a refinance — the real choice is whether to kill the smallest loan with cash so you borrow less. The math says kill it.</p>
+  <div class="q1grid">
+    <div class="card win">
+      <span class="badge">Recommended</span>
+      <h3>Pay it off in cash</h3>
+      <p>A guaranteed, tax-free return equal to your new loan rate (5.00–6.01%). No savings account matches that. You'd refinance ≈$37,057 — still above SoFi's $5,000 minimum.</p>
+      <div class="fig">Saves $278 – $1,512 in interest<br>Cuts payment by $15 – $40 /mo</div>
+    </div>
+    <div class="card">
+      <h3>Roll it into the loan</h3>
+      <p>Only do this if paying $2,068 would empty your emergency cushion. A missed payment later costs far more than the interest here. On short terms the cost of rolling it in is small.</p>
+      <div class="fig">Costs $278 (5-yr) → $1,512 (20-yr)<br>Cheap insurance if cash is tight</div>
+    </div>
+  </div>
+  <p class="small" style="margin-top:12px">Note: because extra payments are penalty-free, paying $2,068 into the new loan in month one achieves nearly the same result. This decision helps, but the term you pick matters far more.</p>
+</section>
+
+<section id="compare">
+  <h2><span class="num">02</span>Full plan comparison</h2>
+  <p class="lead">Financing the full ≈$39,155 payoff. Each step to a longer term buys payment relief at a rising price — the 15→20-yr step saves only $46/mo but costs $8,632 more.</p>
+  <div class="tablewrap">
+    <table aria-label="Plan comparison">
+      <thead><tr><th>Plan</th><th>Payment /mo</th><th>Term</th><th>Total paid</th><th>Total interest</th><th>vs plan above</th></tr></thead>
+      <tbody>
+        <tr><td>5.00% fixed</td><td>$738.96</td><td>60 mo <span class="yr">(5 y)</span></td><td>$44,338</td><td>$5,183</td><td>—</td></tr>
+        <tr><td>5.21% fixed</td><td>$557.22</td><td>84 mo <span class="yr">(7 y)</span></td><td>$46,806</td><td>$7,651</td><td>−$182/mo, +$2,469</td></tr>
+        <tr><td>5.51% fixed</td><td>$425.11</td><td>120 mo <span class="yr">(10 y)</span></td><td>$51,013</td><td>$11,858</td><td>−$132/mo, +$4,207</td></tr>
+        <tr><td>5.81% fixed</td><td>$326.42</td><td>180 mo <span class="yr">(15 y)</span></td><td>$58,756</td><td>$19,601</td><td>−$99/mo, +$7,742</td></tr>
+        <tr><td>6.01% fixed</td><td>$280.78</td><td>240 mo <span class="yr">(20 y)</span></td><td>$67,387</td><td>$28,232</td><td>−$46/mo, +$8,632</td></tr>
+        <tr class="old"><td>Stay @ 10.80%</td><td>$425.11</td><td>197 mo <span class="yr">(16.4 y)</span></td><td>$83,741</td><td>$44,586</td><td>the do-nothing cost</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="console">
+  <h2><span class="num">03</span>Set your monthly payment — see the winner</h2>
+  <p class="lead">SoFi allows extra payments with no penalty, so your <em>actual</em> payment can exceed the required one. Drag the dial to what you can truly pay each month. Plans whose required payment fits your budget light up; the one with the least total interest takes the chevron.</p>
+
+  <div class="console">
+    <div class="console-top">
+      <div class="dial">
+        <div class="k">Your real monthly payment</div>
+        <div id="budgetVal">$425<span>/mo</span></div>
+        <input type="range" id="budget" min="260" max="1200" step="5" value="425" aria-label="Monthly payment budget">
+        <div class="presets">
+          <button data-v="281">$281</button><button data-v="330">$330</button><button data-v="425">$425</button>
+          <button data-v="560">$560</button><button data-v="740">$740</button><button data-v="900">$900</button>
+        </div>
+      </div>
+      <div class="scen">
+        <div class="k">Scenario</div>
+        <label><input type="radio" name="scen" value="A" checked>
+          <span>Refinance everything<br><span class="amt">finance ≈ $39,155</span></span></label>
+        <label><input type="radio" name="scen" value="B">
+          <span>Pay off $2,068 loan first<br><span class="amt">finance ≈ $37,057</span></span></label>
+      </div>
+    </div>
+    <div class="rows" id="rows" aria-live="polite"></div>
+    <div class="consfoot" id="foot"></div>
+  </div>
+  <p class="small" style="margin-top:10px">Bar length = payoff time (full width ≈ 20 years). Simulation applies your whole budget monthly; striped bars mean your budget is below that plan's required minimum. Enroll in autopay for a further 0.25% rate reduction not shown here.</p>
+</section>
+
+<section id="guard">
+  <h2><span class="num">04</span>National Guard × student — verified</h2>
+  <p class="lead">Policies checked against SoFi disclosures, DOJ/CFPB guidance on the SCRA, Army National Guard SLRP terms, and Oklahoma's Guard education program.</p>
+  <div class="check">
+    <div class="checkitem go">
+      <h4>SoFi terms — confirmed</h4>
+      <p>No application fee, no origination fee, no prepayment penalty; fixed means fixed for life; $5,000 minimum; serviced by MOHELA; 0.25% autopay discount (plus 0.125% with SoFi Plus direct deposit). Your Sallie Mae loans are already private, so this refinance forfeits <em>no</em> federal benefits.</p>
+    </div>
+    <div class="checkitem warn">
+      <h4>SCRA 6% cap — the one trade-off</h4>
+      <p>Debt taken <em>before</em> entering service is capped at 6% during qualifying active duty (Title 10, or Title 32 §502(f) &gt;30 days) — private loans included, excess interest refunded. A refinance is a <em>new</em> loan made during service, so it loses SCRA eligibility. Your new rates are ≤6.01% anyway, so the loss is tiny — but if you're on qualifying orders <em>right now</em>, invoke SCRA on the old 9.7–11.25% loans first and refinance after demobilizing. JAG can help file it.</p>
+    </div>
+    <div class="checkitem warn">
+      <h4>Guard SLRP — won't cover these loans</h4>
+      <p>The Student Loan Repayment Program (up to $50k for critical-skill 6/8-yr contracts, ≈$8,333/yr paid to the lender) applies to qualifying <em>federal</em> loans. Private Sallie Mae/SoFi debt is generally ineligible. If you extend or re-enlist, ask the education &amp; incentives office before signing — but don't delay this refinance waiting on it.</p>
+    </div>
+    <div class="checkitem go">
+      <h4>Oklahoma tuition waiver — borrow nothing new</h4>
+      <p>The Oklahoma National Guard Educational Assistance Program waives resident tuition and mandatory fees at Oklahoma public colleges — up to 18 credit hrs/semester (2.0 GPA, satisfactory participation). Stack Federal Tuition Assistance and MGIB-SR (Ch. 1606). Your best "better option" is making this $38,599 the last student debt you ever take.</p>
+    </div>
+    <div class="checkitem">
+      <h4>Rate-shop before signing</h4>
+      <p>Soft-pull quotes the same week from Navy Federal, PenFed, Earnest, or Laurel Road. If nobody beats 5.00–5.51% fixed for your term, take SoFi with autopay. Every month of delay wastes ≈$165–170 in avoidable interest.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    <p><b>Sources:</b> SoFi rate &amp; fee disclosures (sofi.com); U.S. Dept. of Justice Servicemembers &amp; Veterans Initiative (SCRA 6% cap); Consumer Financial Protection Bureau (military student loan relief); Army National Guard SLRP (nationalguard.com); Oklahoma National Guard Educational Assistance Act (Oklahoma Senate / State Regents).</p>
+    <p style="margin-top:8px">This tool is an independent numerical analysis, not licensed financial advice. Figures use the ≈$39,155 payoff implied by SoFi's quoted payments (balance + accrued interest). Confirm exact payoff amounts with Sallie Mae and final terms with SoFi.</p>
+  </div>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  const PLANS=[
+    {rate:5.00, yrs:5,  label:"5-yr · 5.00%"},
+    {rate:5.21, yrs:7,  label:"7-yr · 5.21%"},
+    {rate:5.51, yrs:10, label:"10-yr · 5.51%"},
+    {rate:5.81, yrs:15, label:"15-yr · 5.81%"},
+    {rate:6.01, yrs:20, label:"20-yr · 6.01%"}
+  ];
+  const PRINCIPAL={A:39155, B:37057};
+  const MAXMONTHS=240;
+
+  const fmt=n=>"$"+Math.round(n).toLocaleString("en-US");
+  const pmt=(P,annual,years)=>{const r=annual/1200,n=years*12;return P*r/(1-Math.pow(1+r,-n));};
+  function simulate(P,annual,pay){
+    const r=annual/1200;let bal=P,months=0,interest=0;
+    if(pay<=P*r) return null;
+    while(bal>0.005&&months<1200){const i=bal*r;interest+=i;const p=Math.min(pay,bal+i);bal=bal+i-p;months++;}
+    return {months,interest};
+  }
+
+  const slider=document.getElementById("budget");
+  const budgetVal=document.getElementById("budgetVal");
+  const rows=document.getElementById("rows");
+  const foot=document.getElementById("foot");
+
+  function scenario(){return document.querySelector('input[name=scen]:checked').value;}
+
+  function render(){
+    const budget=+slider.value;
+    const scen=scenario();
+    const P=PRINCIPAL[scen];
+    budgetVal.innerHTML="$"+budget+"<span>/mo</span>";
+
+    const results=PLANS.map(pl=>{
+      const req=pmt(P,pl.rate,pl.yrs);
+      const ok=budget>=req-0.5;
+      const sim=ok?simulate(P,pl.rate,Math.max(budget,req)):null;
+      return {...pl,req,ok,sim};
+    });
+
+    let best=null;
+    results.forEach(r=>{if(r.ok&&r.sim&&(!best||r.sim.interest<best.sim.interest))best=r;});
+
+    rows.innerHTML=results.map(r=>{
+      const isBest=best&&r===best;
+      if(!r.ok){
+        return `<div class="planrow na">
+          <div class="planname">${r.label}<span class="req">needs ${fmt(r.req)}/mo</span></div>
+          <div class="track"><div class="fill na" style="width:100%"></div></div>
+          <div class="planstats">below required payment</div>
+        </div>`;
+      }
+      const w=Math.max(6,Math.min(100,r.sim.months/MAXMONTHS*100));
+      const y=(r.sim.months/12).toFixed(1);
+      return `<div class="planrow ${isBest?"best":""}">
+        <div class="planname">${r.label}<span class="chev">Best</span><span class="req">min ${fmt(r.req)}/mo</span></div>
+        <div class="track"><div class="fill" style="width:${w}%"><span class="tracklbl">${r.sim.months} mo</span></div></div>
+        <div class="planstats">paid off in <b>${y} yrs</b><br><span class="int">${fmt(r.sim.interest)} interest</span></div>
+      </div>`;
+    }).join("");
+
+    if(best){
+      const old=simulate(P,10.80,budget);
+      const oldTxt=old?` Staying at 10.80% with the same payment would cost ${fmt(old.interest)} — refinancing saves you <b>${fmt(old.interest-best.sim.interest)}</b>.`:" At this payment the old 10.80% loans would never be paid off — interest exceeds the payment.";
+      foot.innerHTML=`At <b>$${budget}/mo</b> (${scen==="A"?"financing ≈$39,155":"after paying off the $2,068 loan, financing ≈$37,057"}), your best choice is the <b>${best.label}</b> plan: debt-free in <b>${(best.sim.months/12).toFixed(1)} years</b> with <b>${fmt(best.sim.interest)}</b> total interest.${oldTxt}`;
+    } else {
+      foot.innerHTML=`No plan's required payment fits $${budget}/mo. The lowest floor is the 20-yr plan at <b>${fmt(pmt(P,6.01,20))}/mo</b>.`;
+    }
+  }
+
+  slider.addEventListener("input",render);
+  document.querySelectorAll(".presets button").forEach(b=>b.addEventListener("click",()=>{slider.value=b.dataset.v;render();}));
+  document.querySelectorAll('input[name=scen]').forEach(r=>r.addEventListener("change",render));
+  render();
+})();
+</script>
+</body>
+</html>
