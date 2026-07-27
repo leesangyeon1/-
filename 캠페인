@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>원정도 편집기 — 재의 상흔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600&family=Noto+Sans+KR:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --plate:#0A1F1E;--plate2:#0F2C29;--plate3:#143733;--line:#2A4A44;
+  --brass:#CBA135;--brass2:#8C6F2A;--brass3:#5A4A22;
+  --bone:#E9E1CB;--dim:#93A099;--sea:#0A2A33;--ember:#E4622F;
+  --serif:'Noto Serif KR',Georgia,serif;--sans:'Noto Sans KR',system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--plate);color:var(--bone);font-family:var(--sans);font-weight:300;
+  display:flex;flex-direction:column;overflow:hidden;font-size:13px}
+
+/* ── top bar ── */
+.top{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--plate2);flex-wrap:wrap}
+.brand{font-family:var(--serif);font-weight:600;font-size:16px;letter-spacing:-.01em;white-space:nowrap}
+.brand span{color:var(--ember)}
+.wname{background:transparent;border:1px solid var(--brass3);color:var(--bone);font-family:var(--sans);
+  padding:6px 10px;font-size:12px;width:190px;border-radius:1px}
+.spacer{flex:1}
+.btn{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;color:var(--brass2);border:1px solid var(--brass3);padding:7px 11px;
+  cursor:pointer;border-radius:1px;transition:.15s;white-space:nowrap}
+.btn:hover{color:var(--bone);border-color:var(--brass2)}
+.btn.primary{background:var(--brass);color:#0A1F1E;border-color:var(--brass);font-weight:600}
+.btn[aria-pressed="true"]{background:var(--brass);color:#0A1F1E;border-color:var(--brass);font-weight:600}
+.btn:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+
+/* ── layout ── */
+.body{flex:1;display:grid;grid-template-columns:236px minmax(0,1fr) 320px;min-height:0}
+.rail,.side{background:var(--plate2);overflow-y:auto;display:flex;flex-direction:column}
+.rail{border-right:1px solid var(--line)}
+.side{border-left:1px solid var(--line)}
+.stage{position:relative;background:var(--sea);min-width:0}
+svg#cv{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+svg#cv.tool-select{cursor:default}
+
+/* ── panels ── */
+.ph{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;color:var(--brass2);text-transform:uppercase;
+  padding:12px 14px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--plate2);z-index:2}
+.pad{padding:12px 14px}
+.tabs{display:flex;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--plate2);z-index:3}
+.tab{flex:1;padding:11px 4px;text-align:center;font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  color:var(--brass2);cursor:pointer;border-bottom:2px solid transparent;text-transform:uppercase}
+.tab[aria-selected="true"]{color:var(--bone);border-bottom-color:var(--brass)}
+
+/* ── tool palette ── */
+.tools{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:12px 14px}
+.tools .btn{padding:9px 6px;font-size:10px;text-align:center}
+.toggles{display:flex;flex-direction:column;gap:5px;padding:0 14px 14px}
+.tg{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--dim);cursor:pointer;padding:3px 0}
+.tg input{accent-color:var(--brass);width:14px;height:14px}
+.tg:hover{color:var(--bone)}
+
+/* ── object list ── */
+.search{width:100%;background:var(--plate);border:1px solid var(--brass3);color:var(--bone);padding:7px 9px;font-size:12px;font-family:var(--sans)}
+.olist{padding:0 0 20px}
+.oitem{display:flex;align-items:center;gap:9px;padding:8px 14px;cursor:pointer;border-left:2px solid transparent;font-size:12px}
+.oitem:hover{background:var(--plate3)}
+.oitem.sel{background:var(--plate3);border-left-color:var(--brass)}
+.dot{width:9px;height:9px;flex:0 0 9px;border-radius:50%;border:1px solid rgba(0,0,0,.4)}
+.dot.sq{border-radius:1px;transform:rotate(45deg)}
+.oitem .meta{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--brass2);letter-spacing:.08em}
+
+/* ── forms ── */
+.field{margin-bottom:11px}
+.field label{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;color:var(--brass2);
+  text-transform:uppercase;margin-bottom:4px}
+.field input,.field select,.field textarea{width:100%;background:var(--plate);border:1px solid var(--brass3);
+  color:var(--bone);padding:7px 9px;font-size:12px;font-family:var(--sans);border-radius:1px}
+.field textarea{min-height:56px;resize:vertical;line-height:1.55}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brass)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.hint{font-size:11.5px;color:var(--dim);line-height:1.6}
+.chip{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;border:1px solid var(--brass3);
+  color:var(--dim);padding:3px 7px;margin:0 4px 4px 0}
+.danger{color:#D8705E;border-color:#5C3129}
+.danger:hover{color:#F09883;border-color:#8A4A3C}
+
+/* ── faction rows ── */
+.frow{display:grid;grid-template-columns:26px 1fr 30px;gap:7px;align-items:center;margin-bottom:7px}
+.frow input[type=color]{width:26px;height:26px;padding:0;border:1px solid var(--brass3);background:none;cursor:pointer}
+.frow input[type=text]{background:var(--plate);border:1px solid var(--brass3);color:var(--bone);padding:6px 8px;font-size:12px;width:100%}
+.xbtn{background:none;border:1px solid var(--brass3);color:#B0685C;cursor:pointer;font-size:14px;line-height:1;padding:4px 0}
+
+/* ── relation rows ── */
+.rrow{display:grid;grid-template-columns:1fr 62px;gap:8px;align-items:center;margin-bottom:6px}
+.rrow .nm{font-size:12px;display:flex;align-items:center;gap:7px}
+.rrow input{background:var(--plate);border:1px solid var(--brass3);color:var(--bone);padding:5px 6px;
+  font-size:11px;font-family:var(--mono);text-align:center;width:100%}
+.rwhy{width:100%;background:var(--plate);border:1px solid var(--brass3);color:var(--dim);padding:5px 7px;
+  font-size:10.5px;font-family:var(--sans);margin:-2px 0 9px}
+
+/* ── canvas overlay ── */
+.hud{position:absolute;left:12px;bottom:12px;display:flex;gap:8px;align-items:center;
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--brass2);
+  background:rgba(10,31,30,.82);border:1px solid var(--line);padding:6px 10px;pointer-events:none}
+.toast{position:absolute;right:14px;top:14px;background:var(--plate2);border:1px solid var(--brass);
+  color:var(--bone);padding:9px 14px;font-size:12px;opacity:0;transition:.25s;pointer-events:none}
+.toast.on{opacity:1}
+
+/* svg element classes */
+.pt{cursor:pointer}
+.pt.hide{display:none}
+.plabel{font-family:var(--sans);font-size:12px;fill:var(--bone);pointer-events:none;paint-order:stroke;
+  stroke:#0A1F1E;stroke-width:3px;stroke-linejoin:round}
+.psub{font-family:var(--mono);font-size:8.5px;fill:#9AA79F;pointer-events:none;paint-order:stroke;
+  stroke:#0A1F1E;stroke-width:3px}
+.selring{fill:none;stroke:var(--brass);stroke-width:2;stroke-dasharray:4 4}
+.edge{stroke-linecap:round}
+.edge.hit{stroke:transparent;stroke-width:14;cursor:pointer}
+
+@media (max-width:1100px){
+  .body{grid-template-columns:1fr}
+  .rail,.side{max-height:230px}
+  .stage{min-height:52vh}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">원정도 <span>편집기</span></div>
+  <input class="wname" id="wname" value="재의 상흔 — 대륙" aria-label="세계 이름">
+  <div class="spacer"></div>
+  <button class="btn" id="btnPreset">기본 세계</button>
+  <button class="btn" id="btnClear">비우기</button>
+  <button class="btn" id="btnImport">불러오기</button>
+  <button class="btn primary" id="btnExport">JSON 저장</button>
+  <button class="btn" id="btnSvg">SVG 저장</button>
+  <input type="file" id="fileIn" accept=".json,application/json" hidden>
+</div>
+
+<div class="body">
+
+  <!-- LEFT RAIL -->
+  <div class="rail">
+    <div class="ph">도구</div>
+    <div class="tools" id="tools">
+      <button class="btn" data-tool="select" aria-pressed="true">선택 · 이동</button>
+      <button class="btn" data-tool="region">지역 추가</button>
+      <button class="btn" data-tool="stop">원정 노드</button>
+      <button class="btn" data-tool="link">연결</button>
+      <button class="btn danger" data-tool="erase">삭제</button>
+      <button class="btn" id="btnFit">화면 맞춤</button>
+    </div>
+
+    <div class="ph">표시</div>
+    <div class="toggles" id="vis">
+      <label class="tg"><input type="checkbox" data-v="region" checked> 지역</label>
+      <label class="tg"><input type="checkbox" data-v="stop" checked> 원정 노드</label>
+      <label class="tg"><input type="checkbox" data-v="edge" checked> 연결선</label>
+      <label class="tg"><input type="checkbox" data-v="rival" checked> 라이벌 전선</label>
+      <label class="tg"><input type="checkbox" data-v="label" checked> 이름표</label>
+      <label class="tg"><input type="checkbox" data-v="grid" checked> 격자</label>
+    </div>
+
+    <div class="ph">목록</div>
+    <div class="pad" style="padding-bottom:8px"><input class="search" id="q" placeholder="이름 검색"></div>
+    <div class="olist" id="olist"></div>
+  </div>
+
+  <!-- CANVAS -->
+  <div class="stage">
+    <svg id="cv" viewBox="0 0 1440 1000">
+      <defs>
+        <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+          <path d="M60 0H0V60" fill="none" stroke="#123A44" stroke-width="1"/>
+        </pattern>
+        <pattern id="grid5" width="300" height="300" patternUnits="userSpaceOnUse">
+          <path d="M300 0H0V300" fill="none" stroke="#1B4E5C" stroke-width="1.2"/>
+        </pattern>
+      </defs>
+      <rect id="bg" x="-4000" y="-4000" width="12000" height="12000" fill="#082129"/>
+      <g id="gGrid"><rect x="-4000" y="-4000" width="12000" height="12000" fill="url(#grid)"/>
+        <rect x="-4000" y="-4000" width="12000" height="12000" fill="url(#grid5)"/></g>
+      <g id="gRival"></g>
+      <g id="gEdge"></g>
+      <g id="gPt"></g>
+      <g id="gSel"></g>
+    </svg>
+    <div class="hud"><span id="hudTool">선택</span><span id="hudPos">0, 0</span><span id="hudCount"></span></div>
+    <div class="toast" id="toast"></div>
+  </div>
+
+  <!-- RIGHT SIDE -->
+  <div class="side">
+    <div class="tabs" id="tabs">
+      <div class="tab" data-tab="prop" aria-selected="true">속성</div>
+      <div class="tab" data-tab="fac" aria-selected="false">세력</div>
+      <div class="tab" data-tab="rel" aria-selected="false">관계</div>
+    </div>
+    <div id="panProp" class="pad"></div>
+    <div id="panFac" class="pad" hidden></div>
+    <div id="panRel" class="pad" hidden></div>
+  </div>
+</div>
+
+<script>
+/* ═══════════ 상수 ═══════════ */
+const CLIMATE={
+ '지중해성':'#C7A94B','온대고원':'#6E8FA8','고산냉대':'#8FA9C4','고온건조':'#E0A94E',
+ '반건조고원':'#B98C63','아한대':'#9FC6D6','온대몬순':'#5FA08C','열대사바나':'#C6C05A',
+ '열대해양':'#4FBFA0','기후없음':'#E4622F','미지정':'#5E6E68'};
+const TERRAIN=['평야','구릉','산맥','고갯길','협곡','사막','오아시스','습지','맹그로브','해안','군도','피오르드','초원','대하천','밀림','고원','메사','광산','철도','도시','성벽도시','항구','균열'];
+const BLOOD=['내해인','산악족','사막민','군도민','수인','북방인','동방인','개척민','무적(無籍)','—'];
+const CREED=['성좌교','계율파','정령신앙','조상숭배','기계신앙','무신','—'];
+const LIVE=['농경평야','유목건조','해양','한대수렵','산업광산','관개농경','—'];
+const SEASON=['맑음','우기','건기','겨울','결빙','모래폭풍','뇌우','범람'];
+const NTYPE={'교전':'#C0503F','정예 교전':'#E4622F','야영':'#4FA37F','사건':'#CBA135',
+  '시장':'#7FB3C4','성소':'#DCD3B4','계약':'#B0342A','관문':'#E4622F','출발':'#8FA83F'};
+const EDGETYPE={'육로':'#8C6F2A','해로':'#3E8FA0','철도':'#8E93A8','고갯길':'#7FA07A','균열로':'#B0342A','원정로':'#CBA135'};
+
+/* ═══════════ 상태 ═══════════ */
+let W=blankWorld(), tool='select', sel=null, linkFrom=null, uid=1;
+let view={x:0,y:0,w:1440,h:1000};
+const vis={region:1,stop:1,edge:1,rival:1,label:1,grid:1};
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const SVGNS='http://www.w3.org/2000/svg';
+const mk=(t,a={})=>{const e=document.createElementNS(SVGNS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+const nid=p=>p+(uid++);
+function blankWorld(){return{meta:{name:'새 세계'},factions:[],relations:{},points:[],edges:[]};}
+const rkey=(a,b)=>[a,b].sort().join('|');
+const fac=id=>W.factions.find(f=>f.id===id);
+const pt=id=>W.points.find(p=>p.id===id);
+
+/* ═══════════ 기본 세계 ═══════════ */
+function presetWorld(){
+ const F=[
+  ['emp','제국','#C9A227','내해인','성좌교','농경평야','reb','대륙을 질서의 이름 아래 하나로 정리한다'],
+  ['reb','반군','#7FA07A','무적(無籍)','무신','한대수렵','emp','명부에 오른 모든 이름을 지운다'],
+  ['chu','성좌교단','#DCD3B4','내해인','성좌교','농경평야','cov','흩어진 해석을 하나로 되돌린다'],
+  ['cov','계율파','#B5763A','사막민','계율파','유목건조','chu','경전과 사람 사이의 중간자를 걷어낸다'],
+  ['pir','해적','#5B7A8C','군도민','무신','해양','tri','빼앗긴 세 섬을 되찾는다'],
+  ['tri','산호연맹','#3F9B86','군도민','정령신앙','해양','pir','세 세대가 뿌리내린 땅을 지킨다'],
+  ['wes','서부 개척연합','#8E93A8','개척민','기계신앙','산업광산','aby','두 광맥을 쥐고 새 세계를 세운다'],
+  ['nor','북부 피오르드연합','#7FB3C4','북방인','조상숭배','한대수렵','aby','조상이 지킨 북쪽 문을 내주지 않는다'],
+  ['eas','동부 연안연합','#A85A5A','동방인','조상숭배','관개농경','aby','천 개의 도시가 지켜온 질서를 넓힌다'],
+  ['sou','남부 사바나연합','#8FA83F','수인','정령신앙','유목건조','aby','짐승과 사람이 걷는 길을 재가 덮게 두지 않는다'],
+  ['aby','마계','#E4622F','—','—','—','','세계가 스스로 서명하게 만든다']
+ ].map(([id,name,color,blood,creed,live,rival,goal])=>({id,name,color,blood,creed,live,rival,goal,debt:1}));
+ F.find(f=>f.id==='wes').debt=5; F.find(f=>f.id==='pir').debt=4;
+ F.find(f=>f.id==='cov').debt=3; F.find(f=>f.id==='reb').debt=3;
+ F.find(f=>f.id==='emp').debt=2; F.find(f=>f.id==='tri').debt=2;
+
+ const R={
+  'emp|reb':[-85,'라이벌 −60 · 이념 상충(통제↔자유) −25'],
+  'chu|emp':[30,'신앙 일치 +25 · 생계 일치 +15 · 주도권 갈등 −10'],
+  'cov|emp':[-25,'신앙 분파 −15 · 국경분쟁 −10'],
+  'emp|pir':[-40,'내해 항로 봉쇄 −25 · 생계 경쟁 −15'],
+  'emp|tri':[10,'해적이라는 공동의 적 +20 · 접점 부족 −10'],
+  'emp|wes':[-15,'혈통 인접 +10 · 이탈한 속주 −25'],
+  'emp|sou':[0,'접점 없음'],'emp|nor':[-20,'습격 피해 −20'],
+  'eas|emp':[-10,'질서 대 질서 — 누구의 질서인가'],
+  'aby|emp':[-70,'존재 위협 (채무 상승 ★★)'],
+  'chu|reb':[-30,'교단이 제국을 승인 −30'],
+  'cov|reb':[40,'중앙 권위 거부 공유 +40'],
+  'pir|reb':[20,'반체제 동류 +10 · 밀수 루트 +10'],
+  'reb|tri':[15,'피억압 연대 +15'],
+  'reb|wes':[35,'동족 네트워크 +25 · 대장벽 광물 계약 +10'],
+  'reb|sou':[20,'생계 일치 +15 · 연대 +5'],
+  'nor|reb':[10,'생계 일치 +15 · 거리 −5'],
+  'eas|reb':[-5,'접점 희박'],
+  'aby|reb':[-60,'산맥이 균열 북측 통로 (채무 ★★★, 파기 ×0.7)'],
+  'chu|cov':[-75,'라이벌 −60 · 근친증오(같은 경전) −15'],
+  'chu|pir':[-35,'순례선 약탈 −35'],
+  'chu|tri':[-20,'정령신앙을 우상으로 규정'],
+  'chu|wes':[-20,'기계신앙을 이단으로 규정'],
+  'chu|sou':[-15,'정령신앙 −15'],'chu|nor':[-25,'조상숭배를 우상숭배로 규정'],
+  'chu|eas':[0,'거리와 무관심'],
+  'aby|chu':[-100,'교리상 절대악 (채무 ★, 파기 ×0.5)'],
+  'cov|pir':[15,'밀무역 파트너 +15'],'cov|tri':[5,'간접 교역 +5'],
+  'cov|wes':[10,'광물 교역 +10'],'cov|sou':[25,'생계 일치 +15 · 대상로 +10'],
+  'cov|nor':[0,'접점 없음'],'cov|eas':[20,'대륙 횡단 교역 +20'],
+  'aby|cov':[-80,'경전이 균열을 부정으로 규정 (채무 ★★★)'],
+  'pir|tri':[-70,'라이벌 −60 · 옛 정착지 청구권 −10'],
+  'pir|wes':[10,'화약·부품 밀거래 +10'],'pir|sou':[-10,'연안 약탈 −10'],
+  'nor|pir':[15,'해양 생계 일치 +15'],'eas|pir':[-20,'상선 피해 −20'],
+  'aby|pir':[-50,'교역 붕괴 위협 (채무 ★★★★, 파기 ×0.8)'],
+  'tri|wes':[-5,'산호초 채굴 마찰 −5'],'sou|tri':[35,'신앙 일치 +25 · 야수 문화 +10'],
+  'nor|tri':[-15,'어장 경쟁 −15'],'eas|tri':[10,'열도 교역 +10'],
+  'aby|tri':[-65,'정령의 죽음 (채무 ★★)'],
+  'sou|wes':[30,'균열 방벽 동맹 +20 · 교역 +10'],
+  'nor|wes':[25,'균열 방벽 동맹 +20 · 광물–모피 +5'],
+  'eas|wes':[20,'균열 방벽 동맹 +20'],
+  'aby|wes':[-100,'접경 최전선 (채무 ★★★★★, 파기 ×1.5)'],
+  'nor|sou':[15,'방벽 동맹 +20 · 생계 상충 −5'],
+  'eas|sou':[30,'방벽 동맹 +20 · 신앙 인접 +10'],
+  'aby|sou':[-100,'접경 최전선 (채무 ★)'],
+  'eas|nor':[20,'신앙 일치 +25 · 항로 경쟁 −5'],
+  'aby|nor':[-100,'접경 최전선 (채무 ★)'],
+  'aby|eas':[-100,'접경 최전선 (채무 ★)']
+ };
+ const rel={};for(const k in R)rel[k]={v:R[k][0],why:R[k][1]};
+
+ const REG=[
+  ['내해 · 아퀼라 프리마',388,600,'지중해성','도시','emp','내해인','성좌교','농경평야','등록 5단계. 제국 보너스의 심장이자 반군 소각의 1순위 표적'],
+  ['대장벽 고갯길',648,462,'고산냉대','고갯길','reb','무적(無籍)','무신','한대수렵','겨울이면 통행로가 하나로 줄어든다. 매복 슬롯 최대'],
+  ['신성반도 · 성좌좌',322,252,'온대고원','성벽도시','chu','내해인','성좌교','농경평야','계단식 성벽. 순례로 덕에 원정 보급 페널티 없음'],
+  ['국경 교구 · 두 이름의 도시',372,660,'지중해성','도시','chu','사막민','성좌교','농경평야','혈통은 사막민, 신앙은 성좌교. 3축이 어긋난 화약고'],
+  ['오아시스 사슬',456,772,'고온건조','오아시스','cov','사막민','계율파','유목건조','도시 간 거리가 멀고 사이는 공백. 오아시스 통제 = 보급 통제'],
+  ['군도 은신처',104,684,'열대해양','군도','pir','군도민','무신','해양','거점이 작고 분산돼 점령해도 재출현'],
+  ['맹그로브 대도',206,766,'열대해양','맹그로브','tri','군도민','정령신앙','해양','길러낸 산호초가 대형 함선 진입을 차단'],
+  ['옛 정착지 세 섬',176,872,'열대해양','해안','tri','군도민','무신','해양','해적의 조상이 세웠고 3세대 전 산호연맹이 정착했다'],
+  ['철도 종착역',790,512,'반건조고원','철도','wes','개척민','기계신앙','산업광산','두 광맥의 분기점. 반군 광물과 균열 광물이 여기서 갈린다'],
+  ['균열 광산',872,506,'반건조고원','광산','wes','개척민','기계신앙','산업광산','채굴량에 비례해 부패도 누적. 마계 채무가 가장 빨리 찬다'],
+  ['빙협 항구',920,198,'아한대','피오르드','nor','북방인','조상숭배','한대수렵','겨울에 해협이 얼어 여름엔 없던 육로가 열린다'],
+  ['만성(萬城)',1206,508,'온대몬순','성벽도시','eas','동방인','조상숭배','관개농경','대륙 최대 인구. 충원 속도 1위, 이동 최하'],
+  ['범람원 대장(大場)',892,812,'열대사바나','대하천','sou','수인','정령신앙','유목건조','우기마다 도하 지점이 이동한다. 지도가 매년 바뀌는 유일한 지역'],
+  ['재의 상흔',930,520,'기후없음','균열','aby','—','—','—','밤에 확장하고 낮에 수축한다. 인접 영지에 부패도 누적']
+ ].map(([name,x,y,climate,terrain,faction,blood,creed,live,notes])=>
+   ({id:nid('r'),kind:'region',name,x,y,size:15,climate,terrain,faction,blood,creed,live,season:'맑음',notes,ntype:'',layer:0,event:''}));
+
+ const STOPS=[
+  ['출발 · 아퀼라 성문',352,690,0,'출발','평야','맑음','챕터 1 시작. 용병단 편성 확정'],
+  ['곡창 교전',432,742,1,'교전','평야','맑음','제국 보급 대열 호위 / 반군은 같은 대열을 노린다'],
+  ['소각된 명부',330,760,1,'사건','도시','맑음','등록부가 불탄 마을. 재등록할 것인가, 내버려 둘 것인가'],
+  ['국경 시장',500,700,2,'시장','도시','맑음','세력별 재고가 다르다. 계율파 상인만 파는 물건이 있다'],
+  ['야영 · 첫 밤',430,822,2,'야영','구릉','맑음','부관 대화 1회. 혈통이 다른 단원의 서사가 열린다'],
+  ['성소 · 이름 다시 쓰기',352,860,2,'성소','도시','맑음','주민 정체성 축 하나를 조작한다'],
+  ['협곡 매복',572,760,3,'정예 교전','협곡','겨울','고갯길 파괴자의 선발대. 승리 시 정체성 축 1개 개조'],
+  ['재의 제안',500,860,3,'계약','고원','맑음','마계의 첫 거래. 거절해도 손해는 없다'],
+  ['야영 · 고갯길 앞',648,806,4,'야영','산맥','겨울','회복과 편성 변경. 다음은 되돌릴 수 없다'],
+  ['눈보라 속 행렬',600,880,4,'사건','고갯길','겨울','통행 가능한 길은 하나뿐이다'],
+  ['관문 · 고갯길 파괴자',712,846,5,'관문','고갯길','겨울','챕터 1 보스. 반군 셀 지휘관 — 목을 베어도 다음이 온다']
+ ].map(([name,x,y,layer,ntype,terrain,season,event])=>
+   ({id:nid('s'),kind:'stop',name,x,y,size:12,climate:'미지정',terrain,faction:'',blood:'—',creed:'—',live:'—',season,notes:'',ntype,layer,event}));
+
+ const P=[...REG,...STOPS];
+ const byName=n=>P.find(p=>p.name===n).id;
+ const E=[
+  ['출발 · 아퀼라 성문','곡창 교전','원정로'],['출발 · 아퀼라 성문','소각된 명부','원정로'],
+  ['곡창 교전','국경 시장','원정로'],['곡창 교전','야영 · 첫 밤','원정로'],
+  ['소각된 명부','야영 · 첫 밤','원정로'],['소각된 명부','성소 · 이름 다시 쓰기','원정로'],
+  ['국경 시장','협곡 매복','원정로'],['야영 · 첫 밤','협곡 매복','원정로'],
+  ['야영 · 첫 밤','재의 제안','원정로'],['성소 · 이름 다시 쓰기','재의 제안','원정로'],
+  ['협곡 매복','야영 · 고갯길 앞','원정로'],['재의 제안','야영 · 고갯길 앞','원정로'],
+  ['재의 제안','눈보라 속 행렬','원정로'],
+  ['야영 · 고갯길 앞','관문 · 고갯길 파괴자','원정로'],['눈보라 속 행렬','관문 · 고갯길 파괴자','원정로'],
+  ['내해 · 아퀼라 프리마','국경 교구 · 두 이름의 도시','육로'],
+  ['국경 교구 · 두 이름의 도시','오아시스 사슬','육로'],
+  ['오아시스 사슬','범람원 대장(大場)','육로'],
+  ['내해 · 아퀼라 프리마','대장벽 고갯길','고갯길'],
+  ['대장벽 고갯길','철도 종착역','고갯길'],
+  ['철도 종착역','균열 광산','철도'],['철도 종착역','빙협 항구','철도'],
+  ['철도 종착역','범람원 대장(大場)','철도'],
+  ['범람원 대장(大場)','만성(萬城)','육로'],['빙협 항구','만성(萬城)','해로'],
+  ['군도 은신처','맹그로브 대도','해로'],['맹그로브 대도','옛 정착지 세 섬','해로'],
+  ['군도 은신처','오아시스 사슬','해로'],
+  ['신성반도 · 성좌좌','내해 · 아퀼라 프리마','육로'],
+  ['균열 광산','재의 상흔','균열로']
+ ].map(([a,b,type])=>({id:nid('e'),a:byName(a),b:byName(b),type}));
+
+ return {meta:{name:'재의 상흔 — 대륙'},factions:F,relations:rel,points:P,edges:E};
+}
+
+/* ═══════════ 렌더 ═══════════ */
+const cv=$('#cv'),gPt=$('#gPt'),gEdge=$('#gEdge'),gSel=$('#gSel'),gRival=$('#gRival'),gGrid=$('#gGrid');
+
+function render(){
+  cv.setAttribute('viewBox',`${view.x} ${view.y} ${view.w} ${view.h}`);
+  gGrid.style.display=vis.grid?'':'none';
+  gEdge.innerHTML='';gPt.innerHTML='';gSel.innerHTML='';gRival.innerHTML='';
+
+  // rival front lines
+  if(vis.rival){
+    const seen=new Set();
+    W.factions.forEach(f=>{
+      if(!f.rival||f.rival==='all')return;
+      const k=[f.id,f.rival].sort().join('|'); if(seen.has(k))return; seen.add(k);
+      const A=W.points.find(p=>p.kind==='region'&&p.faction===f.id);
+      const B=W.points.find(p=>p.kind==='region'&&p.faction===f.rival);
+      if(!A||!B)return;
+      gRival.appendChild(mk('line',{x1:A.x,y1:A.y,x2:B.x,y2:B.y,stroke:'#C0503F',
+        'stroke-width':2,'stroke-dasharray':'3 7','stroke-opacity':.6}));
+    });
+  }
+
+  // edges
+  if(vis.edge)W.edges.forEach(e=>{
+    const A=pt(e.a),B=pt(e.b); if(!A||!B)return;
+    if(!vis[A.kind]||!vis[B.kind])return;
+    const c=EDGETYPE[e.type]||'#8C6F2A';
+    gEdge.appendChild(mk('line',{x1:A.x,y1:A.y,x2:B.x,y2:B.y,stroke:c,'stroke-width':e.type==='원정로'?2.6:1.8,
+      'stroke-opacity':.72,'stroke-dasharray':e.type==='해로'?'8 6':e.type==='균열로'?'2 6':'',class:'edge'}));
+    const hit=mk('line',{x1:A.x,y1:A.y,x2:B.x,y2:B.y,class:'edge hit'});
+    hit.addEventListener('click',ev=>{ev.stopPropagation();
+      if(tool==='erase'){W.edges=W.edges.filter(x=>x.id!==e.id);toast('연결 삭제');refresh();}
+      else{sel={t:'edge',id:e.id};refresh();}});
+    gEdge.appendChild(hit);
+  });
+
+  // points
+  W.points.forEach(p=>{
+    if(!vis[p.kind])return;
+    const g=mk('g',{class:'pt'});
+    if(p.kind==='region'){
+      const c=CLIMATE[p.climate]||CLIMATE['미지정'], fc=fac(p.faction);
+      g.appendChild(mk('circle',{cx:p.x,cy:p.y,r:p.size+7,fill:'none',
+        stroke:fc?fc.color:'#5A4A22','stroke-width':1.4,'stroke-opacity':.75}));
+      g.appendChild(mk('circle',{cx:p.x,cy:p.y,r:p.size,fill:c,stroke:'#0A1F1E','stroke-width':2}));
+    }else{
+      const c=NTYPE[p.ntype]||'#CBA135', s=p.size;
+      g.appendChild(mk('rect',{x:p.x-s,y:p.y-s,width:s*2,height:s*2,fill:c,stroke:'#0A1F1E','stroke-width':2,
+        transform:`rotate(45 ${p.x} ${p.y})`}));
+      if(p.ntype==='관문'){
+        g.appendChild(mk('rect',{x:p.x-s-6,y:p.y-s-6,width:(s+6)*2,height:(s+6)*2,fill:'none',
+          stroke:c,'stroke-width':1.4,'stroke-opacity':.7,transform:`rotate(45 ${p.x} ${p.y})`}));
+      }
+    }
+    if(vis.label){
+      const t=mk('text',{x:p.x,y:p.y+p.size+18,class:'plabel','text-anchor':'middle'});
+      t.textContent=p.name;g.appendChild(t);
+      const sub=p.kind==='region'
+        ? [p.climate,p.terrain].filter(v=>v&&v!=='미지정').join(' · ')
+        : [p.ntype,'L'+p.layer,p.season].filter(Boolean).join(' · ');
+      if(sub){const s2=mk('text',{x:p.x,y:p.y+p.size+31,class:'psub','text-anchor':'middle'});
+        s2.textContent=sub;g.appendChild(s2);}
+    }
+    g.addEventListener('pointerdown',ev=>onPointDown(ev,p));
+    gPt.appendChild(g);
+  });
+
+  // selection ring
+  if(sel&&sel.t==='point'){const p=pt(sel.id);
+    if(p)gSel.appendChild(mk('circle',{cx:p.x,cy:p.y,r:p.size+14,class:'selring'}));}
+  if(linkFrom){const p=pt(linkFrom);
+    if(p)gSel.appendChild(mk('circle',{cx:p.x,cy:p.y,r:p.size+18,fill:'none',stroke:'#E4622F','stroke-width':2}));}
+
+  $('#hudCount').textContent=`지역 ${W.points.filter(p=>p.kind==='region').length} · 노드 ${W.points.filter(p=>p.kind==='stop').length} · 연결 ${W.edges.length}`;
+}
+
+/* ═══════════ 목록 ═══════════ */
+function renderList(){
+  const q=$('#q').value.trim();
+  const list=W.points.filter(p=>!q||p.name.includes(q));
+  $('#olist').innerHTML=list.map(p=>{
+    const f=fac(p.faction);
+    const col=p.kind==='region'?(CLIMATE[p.climate]||'#5E6E68'):(NTYPE[p.ntype]||'#CBA135');
+    const meta=p.kind==='region'?(f?f.name:'무소속'):('L'+p.layer);
+    return `<div class="oitem${sel&&sel.t==='point'&&sel.id===p.id?' sel':''}" data-id="${p.id}">
+      <span class="dot${p.kind==='stop'?' sq':''}" style="background:${col}"></span>
+      <span>${esc(p.name)}</span><span class="meta">${esc(meta)}</span></div>`;
+  }).join('')||'<div class="pad hint">항목이 없습니다.</div>';
+  $$('#olist .oitem').forEach(o=>o.addEventListener('click',()=>{
+    sel={t:'point',id:o.dataset.id};const p=pt(o.dataset.id);
+    view.x=p.x-view.w/2;view.y=p.y-view.h/2;refresh();}));
+}
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ═══════════ 속성 패널 ═══════════ */
+function renderProp(){
+  const el=$('#panProp');
+  if(!sel){el.innerHTML=`<div class="hint">
+    <b style="color:var(--bone)">사용법</b><br><br>
+    · 도구에서 <b>지역 추가</b>나 <b>원정 노드</b>를 고르고 화면을 클릭하면 생성됩니다.<br>
+    · <b>연결</b> 도구로 두 점을 차례로 누르면 선이 생깁니다.<br>
+    · <b>선택 · 이동</b>에서 점을 끌어 옮기고, 빈 곳을 끌면 화면이 이동합니다.<br>
+    · 휠로 확대·축소, <b>Delete</b>로 선택 항목 삭제.<br><br>
+    <span class="chip">JSON 저장</span><span class="chip">불러오기</span> 로 작업을 이어갈 수 있습니다.</div>`;return;}
+  if(sel.t==='edge'){
+    const e=W.edges.find(x=>x.id===sel.id);
+    if(!e){sel=null;return renderProp();}
+    el.innerHTML=`<div class="field"><label>연결 유형</label>
+      <select id="e_type">${Object.keys(EDGETYPE).map(t=>`<option ${t===e.type?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="hint">${esc(pt(e.a)?.name||'?')} → ${esc(pt(e.b)?.name||'?')}</div>
+      <div style="margin-top:14px"><button class="btn danger" id="e_del">연결 삭제</button></div>`;
+    $('#e_type').onchange=ev=>{e.type=ev.target.value;refresh();};
+    $('#e_del').onclick=()=>{W.edges=W.edges.filter(x=>x.id!==e.id);sel=null;refresh();};
+    return;
+  }
+  const p=pt(sel.id); if(!p){sel=null;return renderProp();}
+  const opt=(arr,v)=>arr.map(o=>`<option ${o===v?'selected':''}>${o}</option>`).join('');
+  const facOpt=`<option value="">무소속</option>`+W.factions.map(f=>`<option value="${f.id}" ${f.id===p.faction?'selected':''}>${esc(f.name)}</option>`).join('');
+  const common=`
+    <div class="field"><label>이름</label><input id="f_name" value="${esc(p.name)}"></div>
+    <div class="row2">
+      <div class="field"><label>X</label><input id="f_x" type="number" value="${Math.round(p.x)}"></div>
+      <div class="field"><label>Y</label><input id="f_y" type="number" value="${Math.round(p.y)}"></div>
+    </div>
+    <div class="field"><label>크기</label><input id="f_size" type="range" min="6" max="34" value="${p.size}"></div>`;
+  const regionFields=`
+    <div class="field"><label>기후</label><select id="f_climate">${opt(Object.keys(CLIMATE),p.climate)}</select></div>
+    <div class="field"><label>지형</label><select id="f_terrain">${opt(TERRAIN,p.terrain)}</select></div>
+    <div class="field"><label>계절 태그</label><select id="f_season">${opt(SEASON,p.season)}</select></div>
+    <div class="field"><label>지배 세력</label><select id="f_faction">${facOpt}</select></div>
+    <div class="ph" style="margin:16px -14px 10px;position:static">주민 정체성 (3축)</div>
+    <div class="field"><label>혈통</label><select id="f_blood">${opt(BLOOD,p.blood)}</select></div>
+    <div class="field"><label>신앙</label><select id="f_creed">${opt(CREED,p.creed)}</select></div>
+    <div class="field"><label>생계</label><select id="f_live">${opt(LIVE,p.live)}</select></div>
+    <div id="mismatch"></div>
+    <div class="field"><label>메모</label><textarea id="f_notes">${esc(p.notes)}</textarea></div>`;
+  const stopFields=`
+    <div class="field"><label>노드 유형</label><select id="f_ntype">${opt(Object.keys(NTYPE),p.ntype)}</select></div>
+    <div class="row2">
+      <div class="field"><label>층 (Layer)</label><input id="f_layer" type="number" min="0" value="${p.layer}"></div>
+      <div class="field"><label>계절</label><select id="f_season">${opt(SEASON,p.season)}</select></div>
+    </div>
+    <div class="field"><label>지형</label><select id="f_terrain">${opt(TERRAIN,p.terrain)}</select></div>
+    <div class="field"><label>전장 규칙 / 이벤트</label><textarea id="f_event">${esc(p.event)}</textarea></div>`;
+  el.innerHTML=`<div class="ph" style="margin:-12px -14px 12px;position:static">${p.kind==='region'?'지역':'원정 노드'}</div>`
+    +common+(p.kind==='region'?regionFields:stopFields)
+    +`<div style="margin-top:14px;display:flex;gap:7px">
+        <button class="btn" id="f_dup">복제</button>
+        <button class="btn danger" id="f_del">삭제</button></div>`;
+
+  const bind=(id,key,num)=>{const n=$('#'+id);if(!n)return;
+    n.oninput=ev=>{p[key]=num?(+ev.target.value||0):ev.target.value;
+      if(key==='blood'||key==='creed'||key==='live'||key==='faction')checkMismatch(p);
+      render();renderList();};};
+  bind('f_name','name');bind('f_x','x',1);bind('f_y','y',1);bind('f_size','size',1);
+  ['climate','terrain','season','faction','blood','creed','live','notes','ntype','event'].forEach(k=>bind('f_'+k,k));
+  bind('f_layer','layer',1);
+  if(p.kind==='region')checkMismatch(p);
+  $('#f_del').onclick=()=>{W.points=W.points.filter(x=>x.id!==p.id);
+    W.edges=W.edges.filter(e=>e.a!==p.id&&e.b!==p.id);sel=null;toast('삭제됨');refresh();};
+  $('#f_dup').onclick=()=>{const c={...p,id:nid(p.kind[0]),x:p.x+40,y:p.y+40,name:p.name+' 사본'};
+    W.points.push(c);sel={t:'point',id:c.id};refresh();};
+}
+function checkMismatch(p){
+  const box=$('#mismatch'); if(!box)return;
+  const f=fac(p.faction);
+  if(!f){box.innerHTML='';return;}
+  const bad=[];
+  if(f.blood!==p.blood&&f.blood!=='—'&&p.blood!=='—'&&f.blood!=='무적(無籍)')bad.push('혈통');
+  if(f.creed!==p.creed&&f.creed!=='—'&&p.creed!=='—')bad.push('신앙');
+  if(f.live!==p.live&&f.live!=='—'&&p.live!=='—')bad.push('생계');
+  box.innerHTML=bad.length
+    ? `<div class="hint" style="border:1px solid #6B3A2C;padding:9px;margin-bottom:11px;color:#E0A08C">
+        <b>정체성 불일치 — ${bad.join(' · ')}</b><br>세수 감소 · 반란 확률 상승 · 적 세력 선동 대상</div>`
+    : `<div class="hint" style="border:1px solid #2F5A46;padding:9px;margin-bottom:11px;color:#8FC7AC">정체성 일치 — 안정</div>`;
+}
+
+/* ═══════════ 세력 패널 ═══════════ */
+function renderFac(){
+  $('#panFac').innerHTML=W.factions.map(f=>`
+    <div class="frow">
+      <input type="color" value="${f.color}" data-f="${f.id}" data-k="color">
+      <input type="text" value="${esc(f.name)}" data-f="${f.id}" data-k="name">
+      <button class="xbtn" data-del="${f.id}">×</button>
+    </div>
+    <details style="margin:-3px 0 12px 33px">
+      <summary style="cursor:pointer;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;color:var(--brass2)">상세</summary>
+      <div style="padding-top:9px">
+        <div class="field"><label>혈통</label><select data-f="${f.id}" data-k="blood">${BLOOD.map(o=>`<option ${o===f.blood?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>신앙</label><select data-f="${f.id}" data-k="creed">${CREED.map(o=>`<option ${o===f.creed?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>생계</label><select data-f="${f.id}" data-k="live">${LIVE.map(o=>`<option ${o===f.live?'selected':''}>${o}</option>`).join('')}</select></div>
+        <div class="field"><label>라이벌</label><select data-f="${f.id}" data-k="rival">
+          <option value="">없음</option>${W.factions.filter(o=>o.id!==f.id).map(o=>`<option value="${o.id}" ${o.id===f.rival?'selected':''}>${esc(o.name)}</option>`).join('')}</select></div>
+        <div class="field"><label>마계 채무 상승 속도 (1~5)</label><input type="number" min="0" max="5" value="${f.debt??1}" data-f="${f.id}" data-k="debt"></div>
+        <div class="field"><label>목표</label><textarea data-f="${f.id}" data-k="goal">${esc(f.goal||'')}</textarea></div>
+      </div>
+    </details>`).join('')
+    +`<button class="btn" id="facAdd" style="width:100%;margin-top:6px">세력 추가</button>`;
+
+  $$('#panFac [data-f]').forEach(n=>n.oninput=ev=>{
+    const f=fac(n.dataset.f);if(!f)return;
+    f[n.dataset.k]=n.dataset.k==='debt'?+ev.target.value:ev.target.value;
+    render();renderList();if(n.dataset.k!=='name'&&n.dataset.k!=='color')renderRel();});
+  $$('#panFac [data-del]').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.del;
+    W.factions=W.factions.filter(f=>f.id!==id);
+    W.points.forEach(p=>{if(p.faction===id)p.faction='';});
+    W.factions.forEach(f=>{if(f.rival===id)f.rival='';});
+    Object.keys(W.relations).forEach(k=>{if(k.split('|').includes(id))delete W.relations[k];});
+    refresh();});
+  $('#facAdd').onclick=()=>{
+    const id='f'+(uid++);
+    W.factions.push({id,name:'새 세력',color:'#CBA135',blood:'—',creed:'—',live:'—',rival:'',goal:'',debt:1});
+    refresh();};
+}
+
+/* ═══════════ 관계 패널 ═══════════ */
+let relFocus=null;
+function renderRel(){
+  const el=$('#panRel');
+  if(W.factions.length<2){el.innerHTML='<div class="hint">세력을 2개 이상 만들면 관계를 편집할 수 있습니다.</div>';return;}
+  if(!relFocus||!fac(relFocus))relFocus=W.factions[0].id;
+  const F=fac(relFocus);
+  el.innerHTML=`<div class="field"><label>기준 세력</label>
+      <select id="relSel">${W.factions.map(f=>`<option value="${f.id}" ${f.id===relFocus?'selected':''}>${esc(f.name)}</option>`).join('')}</select></div>
+    <div class="hint" style="margin-bottom:12px">−100 적대 · 0 중립 · +100 우호. 값과 근거를 직접 수정할 수 있습니다.</div>`
+    +W.factions.filter(f=>f.id!==relFocus).map(f=>{
+      const k=rkey(relFocus,f.id),r=W.relations[k]||{v:0,why:''};
+      return `<div class="rrow">
+        <span class="nm"><span class="dot" style="background:${f.color}"></span>${esc(f.name)}</span>
+        <input type="number" min="-100" max="100" value="${r.v}" data-k="${k}" data-p="v" style="color:${relColor(r.v)}">
+      </div>
+      <input class="rwhy" placeholder="근거" value="${esc(r.why)}" data-k="${k}" data-p="why">`;
+    }).join('')
+    +`<div class="hint" style="margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
+       <b style="color:var(--bone)">${esc(F.name)}</b> — ${esc(F.goal||'목표 미지정')}<br><br>
+       ${F.id==='aby'?'마계는 우호도 대신 <b>채무 게이지</b>로 상호작용합니다. 위 값은 표시용 고정치입니다.':'마계 채무 상승 속도: <b>'+('★'.repeat(F.debt??1)||'—')+'</b>'}</div>`;
+  $('#relSel').onchange=ev=>{relFocus=ev.target.value;renderRel();};
+  $$('#panRel [data-k]').forEach(n=>n.oninput=ev=>{
+    const k=n.dataset.k;W.relations[k]=W.relations[k]||{v:0,why:''};
+    if(n.dataset.p==='v'){W.relations[k].v=Math.max(-100,Math.min(100,+ev.target.value||0));
+      n.style.color=relColor(W.relations[k].v);}
+    else W.relations[k].why=ev.target.value;});
+}
+function relColor(v){
+  if(v>0)return `rgb(${58+v/100*21|0},${90+v/100*73|0},${80+v/100*47|0})`;
+  if(v<0)return `rgb(${88+(-v)/100*104|0},${76-(-v)/100*4|0},${72-(-v)/100*9|0})`;
+  return '#8C9691';
+}
+
+/* ═══════════ 캔버스 조작 ═══════════ */
+function toWorld(ev){
+  const r=cv.getBoundingClientRect();
+  return {x:view.x+(ev.clientX-r.left)/r.width*view.w, y:view.y+(ev.clientY-r.top)/r.height*view.h};
+}
+let drag=null;
+function onPointDown(ev,p){
+  ev.stopPropagation();
+  if(tool==='erase'){
+    W.points=W.points.filter(x=>x.id!==p.id);
+    W.edges=W.edges.filter(e=>e.a!==p.id&&e.b!==p.id);
+    if(sel&&sel.id===p.id)sel=null;
+    toast('삭제됨');refresh();return;
+  }
+  if(tool==='link'){
+    if(!linkFrom){linkFrom=p.id;toast('연결 시작 — 대상을 누르세요');}
+    else if(linkFrom!==p.id){
+      const dup=W.edges.some(e=>(e.a===linkFrom&&e.b===p.id)||(e.b===linkFrom&&e.a===p.id));
+      if(!dup){
+        const A=pt(linkFrom);
+        const type=(A.kind==='stop'&&p.kind==='stop')?'원정로':'육로';
+        W.edges.push({id:nid('e'),a:linkFrom,b:p.id,type});toast('연결 생성');
+      }else toast('이미 연결되어 있습니다');
+      linkFrom=null;
+    }else linkFrom=null;
+    refresh();return;
+  }
+  sel={t:'point',id:p.id};
+  const s=toWorld(ev);
+  drag={id:p.id,dx:p.x-s.x,dy:p.y-s.y,moved:false};
+  cv.setPointerCapture(ev.pointerId);
+  refresh();
+}
+cv.addEventListener('pointerdown',ev=>{
+  if(ev.target.closest('.pt')||ev.target.closest('.edge.hit'))return;
+  const w=toWorld(ev);
+  if(tool==='region'||tool==='stop'){
+    const p=tool==='region'
+      ?{id:nid('r'),kind:'region',name:'새 지역',x:w.x,y:w.y,size:15,climate:'미지정',terrain:'평야',
+        faction:'',blood:'—',creed:'—',live:'—',season:'맑음',notes:'',ntype:'',layer:0,event:''}
+      :{id:nid('s'),kind:'stop',name:'새 노드',x:w.x,y:w.y,size:12,climate:'미지정',terrain:'평야',
+        faction:'',blood:'—',creed:'—',live:'—',season:'맑음',notes:'',ntype:'교전',layer:0,event:''};
+    W.points.push(p);sel={t:'point',id:p.id};refresh();return;
+  }
+  sel=null;linkFrom=null;
+  drag={pan:true,sx:ev.clientX,sy:ev.clientY,vx:view.x,vy:view.y};
+  cv.setPointerCapture(ev.pointerId);
+  refresh();
+});
+cv.addEventListener('pointermove',ev=>{
+  const w=toWorld(ev);
+  $('#hudPos').textContent=`${Math.round(w.x)}, ${Math.round(w.y)}`;
+  if(!drag)return;
+  if(drag.pan){
+    const r=cv.getBoundingClientRect();
+    view.x=drag.vx-(ev.clientX-drag.sx)/r.width*view.w;
+    view.y=drag.vy-(ev.clientY-drag.sy)/r.height*view.h;
+    render();
+  }else{
+    const p=pt(drag.id);if(!p)return;
+    p.x=w.x+drag.dx;p.y=w.y+drag.dy;drag.moved=true;render();
+  }
+});
+cv.addEventListener('pointerup',()=>{
+  if(drag&&!drag.pan&&drag.moved)renderProp();
+  drag=null;});
+cv.addEventListener('wheel',ev=>{
+  ev.preventDefault();
+  const w=toWorld(ev),k=ev.deltaY>0?1.12:1/1.12;
+  const nw=Math.max(160,Math.min(6000,view.w*k)),nh=nw*(view.h/view.w);
+  view.x=w.x-(w.x-view.x)*(nw/view.w);
+  view.y=w.y-(w.y-view.y)*(nh/view.h);
+  view.w=nw;view.h=nh;render();
+},{passive:false});
+addEventListener('keydown',ev=>{
+  if(/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))return;
+  if(ev.key==='Delete'||ev.key==='Backspace'){
+    if(sel&&sel.t==='point'){W.points=W.points.filter(x=>x.id!==sel.id);
+      W.edges=W.edges.filter(e=>e.a!==sel.id&&e.b!==sel.id);sel=null;refresh();}
+    else if(sel&&sel.t==='edge'){W.edges=W.edges.filter(x=>x.id!==sel.id);sel=null;refresh();}
+  }
+  if(ev.key==='Escape'){sel=null;linkFrom=null;refresh();}
+  const keys={'1':'select','2':'region','3':'stop','4':'link','5':'erase'};
+  if(keys[ev.key])setTool(keys[ev.key]);
+});
+function fit(){
+  if(!W.points.length){view={x:0,y:0,w:1440,h:1000};return render();}
+  const xs=W.points.map(p=>p.x),ys=W.points.map(p=>p.y);
+  const pad=140,minX=Math.min(...xs)-pad,maxX=Math.max(...xs)+pad,
+        minY=Math.min(...ys)-pad,maxY=Math.max(...ys)+pad;
+  const r=cv.getBoundingClientRect(),ar=r.width/r.height||1.4;
+  let w=maxX-minX,h=maxY-minY;
+  if(w/h<ar)w=h*ar;else h=w/ar;
+  view={x:(minX+maxX)/2-w/2,y:(minY+maxY)/2-h/2,w,h};
+  render();
+}
+
+/* ═══════════ 툴 · 탭 · 표시 ═══════════ */
+function setTool(t){tool=t;
+  $$('#tools .btn[data-tool]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tool===t)));
+  cv.classList.toggle('tool-select',t==='select');
+  linkFrom=null;
+  $('#hudTool').textContent={select:'선택',region:'지역 추가',stop:'노드 추가',link:'연결',erase:'삭제'}[t];
+  render();}
+$$('#tools .btn[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+$('#btnFit').onclick=fit;
+$$('#vis input').forEach(i=>i.onchange=()=>{vis[i.dataset.v]=i.checked;render();});
+$$('.tab').forEach(t=>t.onclick=()=>{
+  $$('.tab').forEach(x=>x.setAttribute('aria-selected',String(x===t)));
+  $('#panProp').hidden=t.dataset.tab!=='prop';
+  $('#panFac').hidden=t.dataset.tab!=='fac';
+  $('#panRel').hidden=t.dataset.tab!=='rel';
+  if(t.dataset.tab==='fac')renderFac();
+  if(t.dataset.tab==='rel')renderRel();});
+$('#q').oninput=renderList;
+$('#wname').oninput=ev=>W.meta.name=ev.target.value;
+
+/* ═══════════ 파일 ═══════════ */
+function dl(name,text,type){
+  const b=new Blob([text],{type}),u=URL.createObjectURL(b),a=document.createElement('a');
+  a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);}
+$('#btnExport').onclick=()=>{
+  dl((W.meta.name||'world').replace(/\s+/g,'-')+'.json',JSON.stringify(W,null,2),'application/json');
+  toast('JSON 저장됨');};
+$('#btnImport').onclick=()=>$('#fileIn').click();
+$('#fileIn').onchange=ev=>{
+  const f=ev.target.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{try{
+    const d=JSON.parse(r.result);
+    if(!d.points||!d.factions)throw 0;
+    W=d;W.relations=W.relations||{};W.meta=W.meta||{name:'불러온 세계'};
+    uid=Date.now()%100000;sel=null;relFocus=null;
+    $('#wname').value=W.meta.name||'';
+    fit();refresh();toast('불러왔습니다');
+  }catch(e){toast('파일을 읽을 수 없습니다');}};
+  r.readAsText(f);ev.target.value='';};
+$('#btnSvg').onclick=()=>{
+  const c=cv.cloneNode(true);
+  c.querySelectorAll('.edge.hit').forEach(n=>n.remove());
+  c.querySelector('#gSel').innerHTML='';
+  c.setAttribute('xmlns',SVGNS);
+  c.setAttribute('width',Math.round(view.w));c.setAttribute('height',Math.round(view.h));
+  const st=document.createElementNS(SVGNS,'style');
+  st.textContent=`.plabel{font-family:'Noto Sans KR',sans-serif;font-size:12px;fill:#E9E1CB;paint-order:stroke;stroke:#0A1F1E;stroke-width:3px}
+.psub{font-family:monospace;font-size:8.5px;fill:#9AA79F;paint-order:stroke;stroke:#0A1F1E;stroke-width:3px}`;
+  c.insertBefore(st,c.firstChild);
+  dl((W.meta.name||'map').replace(/\s+/g,'-')+'.svg',new XMLSerializer().serializeToString(c),'image/svg+xml');
+  toast('SVG 저장됨');};
+$('#btnPreset').onclick=()=>{W=presetWorld();sel=null;relFocus=null;
+  $('#wname').value=W.meta.name;fit();refresh();toast('기본 세계를 불러왔습니다');};
+$('#btnClear').onclick=()=>{
+  if(!confirm('현재 작업을 모두 비웁니다. 저장하지 않은 내용은 사라집니다.'))return;
+  W=blankWorld();sel=null;relFocus=null;$('#wname').value=W.meta.name;
+  view={x:0,y:0,w:1440,h:1000};refresh();};
+
+let tt;
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');
+  clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),1600);}
+
+function refresh(){render();renderList();renderProp();
+  if(!$('#panFac').hidden)renderFac();
+  if(!$('#panRel').hidden)renderRel();}
+
+/* ═══════════ 시작 ═══════════ */
+W=presetWorld();
+$('#wname').value=W.meta.name;
+setTool('select');
+requestAnimationFrame(()=>{fit();refresh();});
+</script>
+</body>
+</html>
