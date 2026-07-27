@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>재의 상흔 — 대륙 측량도</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@300;500;700&family=Noto+Sans+KR:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --plate:#0A1F1E; --plate2:#0F2C29; --plate3:#143733;
+  --sea:#0A2A33; --sea2:#082129;
+  --brass:#CBA135; --brass2:#8C6F2A; --brass3:#5A4A22;
+  --bone:#E9E1CB; --bone-dim:#9FA396;
+  --ember:#E4622F; --ash:#B0342A;
+  --pos:#4FA37F; --neg:#C0503F;
+  --serif:'Noto Serif KR',Georgia,serif;
+  --sans:'Noto Sans KR',system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0; background:var(--plate); color:var(--bone);
+  font-family:var(--sans); font-weight:300; line-height:1.7;
+  background-image:
+    radial-gradient(ellipse at 20% 0%, #16403A 0%, transparent 55%),
+    radial-gradient(ellipse at 90% 100%, #12332F 0%, transparent 50%);
+}
+.wrap{max-width:1500px;margin:0 auto;padding:0 24px 120px}
+
+/* ── plate header ── */
+header{padding:72px 0 40px;border-bottom:1px solid var(--brass3);position:relative}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.34em;color:var(--brass2);text-transform:uppercase}
+h1{font-family:var(--serif);font-weight:700;font-size:clamp(38px,7vw,88px);line-height:.98;margin:18px 0 0;letter-spacing:-.02em}
+h1 em{font-style:normal;color:var(--ember)}
+.tagline{font-family:var(--serif);font-weight:300;font-size:clamp(15px,2vw,20px);color:var(--bone-dim);margin-top:20px;max-width:60ch}
+.coordstrip{display:flex;flex-wrap:wrap;gap:28px;margin-top:34px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--brass2)}
+.coordstrip span b{color:var(--bone);font-weight:400}
+
+/* ── sections ── */
+section{padding-top:88px}
+.sec-head{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;margin-bottom:8px}
+.sec-num{font-family:var(--mono);font-size:12px;letter-spacing:.2em;color:var(--brass2)}
+h2{font-family:var(--serif);font-weight:500;font-size:clamp(24px,3.4vw,38px);margin:0;letter-spacing:-.01em}
+.sec-sub{color:var(--bone-dim);font-size:14px;max-width:72ch;margin:0 0 30px}
+
+/* ── controls ── */
+.controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.tog{
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  background:transparent;color:var(--brass2);border:1px solid var(--brass3);
+  padding:9px 15px;cursor:pointer;transition:.18s;border-radius:1px;
+}
+.tog:hover{color:var(--bone);border-color:var(--brass2)}
+.tog[aria-pressed="true"]{background:var(--brass);color:#0A1F1E;border-color:var(--brass);font-weight:600}
+.tog:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+
+/* ── map layout ── */
+.maparea{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:22px;align-items:start}
+.mapbox{border:1px solid var(--brass3);background:var(--sea2);position:relative;overflow:hidden}
+svg.map{display:block;width:100%;height:auto}
+.panel{border:1px solid var(--brass3);background:var(--plate2);padding:22px;position:sticky;top:20px}
+.panel .pname{font-family:var(--serif);font-size:23px;font-weight:500;margin:0}
+.panel .psub{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;color:var(--brass2);text-transform:uppercase;margin-top:5px}
+.panel dl{margin:20px 0 0;display:grid;grid-template-columns:auto 1fr;gap:9px 14px;font-size:13px}
+.panel dt{font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--brass2);text-transform:uppercase;padding-top:3px;white-space:nowrap}
+.panel dd{margin:0;color:var(--bone)}
+.idbadges{display:flex;flex-wrap:wrap;gap:5px;margin-top:16px}
+.idb{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;border:1px solid var(--brass3);color:var(--bone-dim);padding:3px 7px}
+.hintline{font-size:12px;color:var(--bone-dim);margin-top:18px;border-top:1px solid var(--brass3);padding-top:14px}
+
+/* ── legend ── */
+.legend{display:flex;flex-wrap:wrap;gap:6px 22px;margin-top:14px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--bone-dim)}
+.legend i{display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;border:1px solid rgba(0,0,0,.35)}
+
+/* ── graph ── */
+.grapharea{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:22px;align-items:start}
+.graphbox{border:1px solid var(--brass3);background:var(--plate2)}
+svg.graph{display:block;width:100%;height:auto}
+.scalebar{height:9px;background:linear-gradient(90deg,#C0503F,#8A4438,#3A4340,#3E7A62,#4FA37F);margin-top:12px;border:1px solid var(--brass3)}
+.scalelab{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;letter-spacing:.12em;color:var(--brass2);margin-top:6px}
+
+/* ── matrix ── */
+.mtxscroll{overflow-x:auto;border:1px solid var(--brass3);background:var(--plate2)}
+table.mtx{border-collapse:collapse;font-family:var(--mono);font-size:11px;min-width:760px;width:100%}
+table.mtx th{font-weight:400;color:var(--brass2);letter-spacing:.06em;padding:9px 6px;white-space:nowrap;font-size:10px}
+table.mtx th.rowh{text-align:right;position:sticky;left:0;background:var(--plate2);z-index:1;color:var(--bone);padding-right:12px}
+table.mtx td{text-align:center;padding:8px 4px;color:#0A1F1E;font-weight:600;letter-spacing:.02em}
+table.mtx td.self{background:var(--plate3);color:var(--brass3)}
+table.mtx tr:hover td{outline:1px solid rgba(203,161,53,.35)}
+
+/* ── cards ── */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(275px,1fr));gap:16px;margin-top:26px}
+.card{border:1px solid var(--brass3);background:var(--plate2);padding:20px}
+.card h3{font-family:var(--serif);font-size:18px;font-weight:500;margin:0 0 3px}
+.card .ct{font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--brass2);text-transform:uppercase}
+.card p{font-size:13px;color:var(--bone-dim);margin:13px 0 0}
+.card .hl{color:var(--bone)}
+
+footer{margin-top:96px;padding-top:26px;border-top:1px solid var(--brass3);font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--brass3);display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px}
+
+/* ── svg element styles ── */
+.region{cursor:pointer;transition:filter .2s}
+.region:hover{filter:brightness(1.28)}
+.region.dim{opacity:.28}
+.rlabel{font-family:var(--mono);font-size:12.5px;letter-spacing:.22em;fill:var(--bone);opacity:.62;pointer-events:none;text-transform:uppercase}
+.sealabel{font-family:var(--serif);font-size:16px;font-style:italic;fill:#4E8296;opacity:.85;pointer-events:none;letter-spacing:.16em}
+.fname{font-family:var(--serif);font-size:17px;font-weight:500;fill:var(--bone);pointer-events:none}
+.fcap{font-family:var(--mono);font-size:10px;letter-spacing:.1em;fill:var(--brass2);pointer-events:none}
+.layer{transition:opacity .35s}
+.layer.off{opacity:0;pointer-events:none}
+.ember-core{animation:breathe 7s ease-in-out infinite}
+.shimmer{animation:shimmer 4.5s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.95;transform:scale(1.045)}}
+@keyframes shimmer{0%,100%{opacity:.2}50%{opacity:.6}}
+.edge{transition:opacity .2s,stroke-width .2s}
+.node{cursor:pointer}
+.node circle{transition:.2s}
+.node:hover circle{stroke-width:3}
+.nlabel{font-family:var(--sans);font-size:13px;font-weight:400;fill:var(--bone);pointer-events:none}
+.nval{font-family:var(--mono);font-size:10px;fill:var(--bone-dim);pointer-events:none}
+.faded{opacity:.07}
+
+@media (max-width:980px){
+  .maparea,.grapharea{grid-template-columns:1fr}
+  .panel{position:static}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+  html{scroll-behavior:auto}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">대륙 측량도 · 제 1 판 · 스토리보드 v0.1</div>
+  <h1>재의 <em>상흔</em></h1>
+  <p class="tagline">열한 개의 세력이 하나의 대륙을 나눠 가졌다. 그중 열 개는 각자의 이유로 옳고, 하나는 이유를 갖지 않는다.</p>
+  <div class="coordstrip">
+    <span>세력 <b>11</b></span>
+    <span>기후대 <b>9</b></span>
+    <span>라이벌 전선 <b>4</b></span>
+    <span>계절 이벤트 <b>3</b></span>
+    <span>승리 경로 <b>3</b></span>
+  </div>
+</header>
+
+<!-- ══════════ MAP ══════════ -->
+<section id="map">
+  <div class="sec-head"><span class="sec-num">Ⅰ</span><h2>대륙</h2></div>
+  <p class="sec-sub">서반부는 구세계 — 제국·교단·산맥·사막·군도가 천 년째 같은 싸움을 반복한다. 동반부는 균열 변경 — 네 개의 도시국가 연합이 재의 상흔을 사방에서 둘러싸고 있다. 지역을 눌러 상세를 확인하세요.</p>
+
+  <div class="controls" id="layerCtl">
+    <button class="tog" data-layer="terrain" aria-pressed="true">지형</button>
+    <button class="tog" data-layer="climate" aria-pressed="false">기후</button>
+    <button class="tog" data-layer="rivers" aria-pressed="true">수계</button>
+    <button class="tog" data-layer="routes" aria-pressed="false">교역로</button>
+    <button class="tog" data-layer="factions" aria-pressed="true">세력</button>
+    <button class="tog" data-layer="rift" aria-pressed="true">균열</button>
+  </div>
+
+  <div class="maparea">
+    <div class="mapbox">
+      <svg class="map" viewBox="0 0 1440 1000" role="img" aria-label="대륙 지도">
+        <defs>
+          <radialGradient id="seaGrad" cx="50%" cy="50%" r="75%">
+            <stop offset="0%" stop-color="#0D3641"/><stop offset="100%" stop-color="#061A21"/>
+          </radialGradient>
+          <radialGradient id="emberGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#FFD27A"/><stop offset="35%" stop-color="#E4622F"/>
+            <stop offset="75%" stop-color="#8C2A17"/><stop offset="100%" stop-color="#2A0F0A"/>
+          </radialGradient>
+          <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="16" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+          <pattern id="wave" width="26" height="14" patternUnits="userSpaceOnUse">
+            <path d="M0 8 q6.5 -6 13 0 t13 0" fill="none" stroke="#1B4E5C" stroke-width="1" opacity=".5"/>
+          </pattern>
+          <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="7" stroke="#0A1F1E" stroke-width="1.6" opacity=".28"/>
+          </pattern>
+        </defs>
+
+        <!-- ocean -->
+        <rect width="1440" height="1000" fill="url(#seaGrad)"/>
+        <rect width="1440" height="1000" fill="url(#wave)"/>
+
+        <!-- base continent silhouette -->
+        <path d="M232 300 Q210 200 300 168 L430 160 Q470 178 468 232 L560 268 Q700 236 760 104 L1122 84 Q1176 168 1152 276 L1300 292 Q1372 340 1366 520 Q1360 690 1268 748 L1170 762 Q1180 860 1096 928 L800 932 Q690 900 682 826 L660 866 Q520 906 414 888 Q296 862 294 792 L276 690 Q262 560 282 470 Z"
+              fill="#1C3C33" stroke="none"/>
+
+        <!-- ── TERRAIN LAYER ── -->
+        <g id="L-terrain" class="layer">
+          <!-- 신성반도 -->
+          <path class="region" data-f="chu" d="M232 300 Q210 200 300 168 L430 160 Q470 180 466 234 L440 322 Q360 372 300 356 Z" fill="#5C6B58"/>
+          <!-- 제국 -->
+          <path class="region" data-f="emp" d="M300 356 Q360 372 440 322 L466 234 L556 270 L602 400 Q616 520 566 612 Q470 690 388 668 Q292 634 284 528 Q276 434 300 356 Z" fill="#6E7042"/>
+          <!-- 내해 -->
+          <ellipse cx="432" cy="474" rx="86" ry="98" fill="#0D3B47"/>
+          <ellipse cx="432" cy="474" rx="86" ry="98" fill="url(#wave)"/>
+          <!-- 대장벽 산맥 -->
+          <path class="region" data-f="reb" d="M556 270 L668 258 Q724 380 716 484 Q706 610 654 672 L566 612 Q616 520 602 400 Z" fill="#4B5A4E"/>
+          <!-- 남부 사막 -->
+          <path class="region" data-f="cov" d="M292 640 Q380 662 500 640 L646 668 Q676 760 646 848 Q500 894 402 878 Q300 856 292 780 Z" fill="#8A7040"/>
+          <!-- 서부 개척지 -->
+          <path class="region" data-f="wes" d="M716 484 Q724 380 668 258 L790 300 Q866 340 872 452 Q878 576 828 664 L716 690 Q654 672 654 672 Q706 610 716 484 Z" fill="#5E5B52"/>
+          <!-- 북부 피오르드 -->
+          <path class="region" data-f="nor" d="M760 104 L1122 84 Q1176 168 1152 276 L980 322 Q852 336 790 300 Q748 210 760 104 Z" fill="#3F5966"/>
+          <!-- 동부 -->
+          <path class="region" data-f="eas" d="M1080 330 L1300 292 Q1372 340 1366 520 Q1360 690 1268 748 L1146 736 Q1082 640 1074 512 Q1068 410 1080 330 Z" fill="#6B4A46"/>
+          <!-- 남부 사바나 -->
+          <path class="region" data-f="sou" d="M700 700 L828 664 L1060 682 L1160 758 Q1178 858 1096 928 L800 932 Q690 900 686 826 Q684 754 700 700 Z" fill="#6E7638"/>
+          <!-- 군도해 섬들 -->
+          <g class="region" data-f="tri">
+            <path d="M148 716 Q198 682 258 712 Q294 760 268 812 Q214 856 164 828 Q126 780 148 716 Z" fill="#3B6B5C"/>
+            <path d="M252 852 Q292 836 314 866 Q318 896 288 908 Q254 906 246 880 Z" fill="#3B6B5C"/>
+          </g>
+          <g class="region" data-f="pir">
+            <path d="M84 660 Q120 636 148 664 Q156 700 124 712 Q92 706 84 660 Z" fill="#4A6373"/>
+            <path d="M156 596 Q180 582 196 604 Q196 628 172 632 Q152 622 156 596 Z" fill="#4A6373"/>
+            <path d="M74 776 Q106 758 128 784 Q130 816 100 822 Q72 812 74 776 Z" fill="#4A6373"/>
+          </g>
+          <!-- 산맥 기호 -->
+          <g stroke="#2B3A32" stroke-width="2.4" fill="none" opacity=".75">
+            <path d="M600 300 l14 -20 l14 20 M628 336 l14 -20 l14 20 M596 372 l14 -20 l14 20 M634 408 l14 -20 l14 20 M604 448 l14 -20 l14 20 M640 486 l14 -20 l14 20 M606 526 l14 -20 l14 20 M636 566 l14 -20 l14 20 M600 606 l14 -20 l14 20"/>
+          </g>
+          <!-- 메사/철도 -->
+          <g stroke="#8E93A8" stroke-width="1.4" opacity=".55" fill="none">
+            <path d="M744 330 L800 430 L790 560 L836 650" stroke-dasharray="1 7" stroke-linecap="round" stroke-width="3"/>
+          </g>
+          <!-- 사구 -->
+          <g stroke="#6B5427" stroke-width="1.6" fill="none" opacity=".6">
+            <path d="M330 700 q26 -12 52 0 M420 728 q26 -12 52 0 M350 780 q26 -12 52 0 M470 790 q26 -12 52 0 M400 840 q26 -12 52 0 M540 700 q26 -12 52 0 M560 828 q26 -12 52 0"/>
+          </g>
+          <!-- 침엽수 -->
+          <g fill="#2E4A46" opacity=".75">
+            <path d="M840 160 l7 16 h-14 Z M880 190 l7 16 h-14 Z M930 150 l7 16 h-14 Z M980 200 l7 16 h-14 Z M1030 160 l7 16 h-14 Z M1075 200 l7 16 h-14 Z M810 230 l7 16 h-14 Z M900 250 l7 16 h-14 Z M1000 270 l7 16 h-14 Z"/>
+          </g>
+          <!-- 계단식 논 -->
+          <g stroke="#8A5E4A" stroke-width="1.3" fill="none" opacity=".55">
+            <path d="M1120 400 q60 -18 120 -4 M1120 436 q60 -18 120 -4 M1130 472 q60 -18 120 -4 M1140 560 q60 -18 120 -4 M1150 600 q60 -18 120 -4"/>
+          </g>
+        </g>
+
+        <!-- ── CLIMATE LAYER ── -->
+        <g id="L-climate" class="layer off">
+          <path d="M232 300 Q210 200 300 168 L430 160 Q470 180 466 234 L440 322 Q360 372 300 356 Z" fill="#6E8FA8" opacity=".62"/>
+          <path d="M300 356 Q360 372 440 322 L466 234 L556 270 L602 400 Q616 520 566 612 Q470 690 388 668 Q292 634 284 528 Q276 434 300 356 Z" fill="#C7A94B" opacity=".62"/>
+          <path d="M556 270 L668 258 Q724 380 716 484 Q706 610 654 672 L566 612 Q616 520 602 400 Z" fill="#8FA9C4" opacity=".62"/>
+          <path d="M292 640 Q380 662 500 640 L646 668 Q676 760 646 848 Q500 894 402 878 Q300 856 292 780 Z" fill="#E0A94E" opacity=".66"/>
+          <path d="M716 484 Q724 380 668 258 L790 300 Q866 340 872 452 Q878 576 828 664 L716 690 Q654 672 654 672 Q706 610 716 484 Z" fill="#B98C63" opacity=".6"/>
+          <path d="M760 104 L1122 84 Q1176 168 1152 276 L980 322 Q852 336 790 300 Q748 210 760 104 Z" fill="#9FC6D6" opacity=".6"/>
+          <path d="M1080 330 L1300 292 Q1372 340 1366 520 Q1360 690 1268 748 L1146 736 Q1082 640 1074 512 Q1068 410 1080 330 Z" fill="#5FA08C" opacity=".6"/>
+          <path d="M700 700 L828 664 L1060 682 L1160 758 Q1178 858 1096 928 L800 932 Q690 900 686 826 Q684 754 700 700 Z" fill="#C6C05A" opacity=".6"/>
+          <path d="M148 716 Q198 682 258 712 Q294 760 268 812 Q214 856 164 828 Q126 780 148 716 Z" fill="#4FBFA0" opacity=".6"/>
+          <path d="M84 660 Q120 636 148 664 Q156 700 124 712 Q92 706 84 660 Z" fill="#4FBFA0" opacity=".6"/>
+          <path d="M74 776 Q106 758 128 784 Q130 816 100 822 Q72 812 74 776 Z" fill="#4FBFA0" opacity=".6"/>
+          <text class="rlabel" x="330" y="252" font-size="10">온대고원</text>
+          <text class="rlabel" x="352" y="600" font-size="10">지중해성</text>
+          <text class="rlabel" x="640" y="330" font-size="10">고산냉대</text>
+          <text class="rlabel" x="420" y="770" font-size="10">고온건조</text>
+          <text class="rlabel" x="742" y="420" font-size="10">반건조고원</text>
+          <text class="rlabel" x="880" y="200" font-size="10">아한대</text>
+          <text class="rlabel" x="1150" y="440" font-size="10">온대몬순</text>
+          <text class="rlabel" x="870" y="820" font-size="10">열대사바나</text>
+          <text class="rlabel" x="128" y="880" font-size="10">열대해양</text>
+        </g>
+
+        <!-- ── RIVERS ── -->
+        <g id="L-rivers" class="layer" fill="none" stroke="#2E7A8C" stroke-linecap="round" opacity=".85">
+          <path d="M1024 690 Q952 754 906 806 Q866 872 820 930" stroke-width="5"/>
+          <path d="M950 748 Q900 762 862 812" stroke-width="2.6"/>
+          <path d="M604 566 Q556 548 518 536" stroke-width="3.4"/>
+          <path d="M672 700 Q712 760 706 830" stroke-width="2.6"/>
+          <path d="M1272 336 Q1214 448 1246 588" stroke-width="3.4"/>
+          <path d="M382 214 Q356 274 340 330" stroke-width="2.4"/>
+          <path d="M888 116 Q904 200 872 288" stroke-width="2.6"/>
+        </g>
+
+        <!-- ── TRADE ROUTES ── -->
+        <g id="L-routes" class="layer off" fill="none" stroke="#CBA135" stroke-width="1.8" stroke-dasharray="9 8" opacity=".8">
+          <path d="M480 780 Q660 800 890 820"/>
+          <path d="M480 780 Q760 700 1210 512"/>
+          <path d="M430 610 Q380 700 470 780"/>
+          <path d="M796 520 Q860 620 900 818"/>
+          <path d="M796 520 Q1000 300 1210 512"/>
+          <path d="M930 208 Q1080 260 1210 512"/>
+          <path d="M930 208 Q640 300 430 610"/>
+          <path d="M120 690 Q240 640 330 268"/>
+          <g fill="#CBA135" stroke="none" font-family="ui-monospace,monospace" font-size="9.5" letter-spacing="1.4">
+            <text x="640" y="792" opacity=".9">대상로</text>
+            <text x="1000" y="352" opacity=".9">균열 우회로</text>
+            <text x="196" y="470" opacity=".9">밀무역 항로</text>
+          </g>
+        </g>
+
+        <!-- ── RIFT (signature) ── -->
+        <g id="L-rift" class="layer">
+          <path d="M890 344 L946 396 L912 438 L978 470 L930 520 L1000 548 L952 606 L1014 646 L960 700 L878 664 Q828 566 838 470 Q848 386 890 344 Z"
+                fill="#150807" stroke="#3A130C" stroke-width="2"/>
+          <path class="ember-core" style="transform-origin:930px 520px" filter="url(#glow)"
+                d="M902 372 L938 412 L910 444 L964 474 L926 518 L982 546 L944 596 L992 638 L948 682 L890 652 Q852 562 860 474 Q868 402 902 372 Z"
+                fill="url(#emberGrad)"/>
+          <g class="shimmer" fill="none" stroke="#F6B26B" stroke-width="1.2" opacity=".4">
+            <path d="M886 348 q-16 -30 4 -58 M962 350 q18 -28 2 -56 M876 700 q-18 28 -2 56 M986 664 q20 26 6 54"/>
+          </g>
+          <text class="rlabel" x="856" y="322" fill="#E4622F" opacity=".95" font-size="13">재의 상흔</text>
+        </g>
+
+        <!-- ── SEA LABELS ── -->
+        <text class="sealabel" x="382" y="480">내해</text>
+        <text class="sealabel" x="86" y="920">군도해</text>
+        <text class="sealabel" x="880" y="52">빙하해</text>
+        <text class="sealabel" x="1330" y="880" text-anchor="end">대양</text>
+
+        <!-- ── FACTION MARKERS ── -->
+        <g id="L-factions" class="layer"></g>
+      </svg>
+    </div>
+
+    <aside class="panel" id="panel">
+      <h2 class="pname" id="pName" style="font-family:var(--serif);font-size:23px">지역을 선택하세요</h2>
+      <div class="psub" id="pSub">11 REGIONS · 9 CLIMATES</div>
+      <dl id="pBody">
+        <dt>안내</dt><dd>지도의 지역이나 세력 표식을 누르면 기후·지형·전술 성격이 여기에 표시됩니다.</dd>
+      </dl>
+      <div class="idbadges" id="pBadges"></div>
+      <div class="hintline" id="pHint">상단 버튼으로 기후·교역로 레이어를 겹쳐 볼 수 있습니다.</div>
+    </aside>
+  </div>
+
+  <div class="legend">
+    <span><i style="background:#6E8FA8"></i>온대고원</span>
+    <span><i style="background:#C7A94B"></i>지중해성</span>
+    <span><i style="background:#8FA9C4"></i>고산냉대</span>
+    <span><i style="background:#E0A94E"></i>고온건조</span>
+    <span><i style="background:#B98C63"></i>반건조고원</span>
+    <span><i style="background:#9FC6D6"></i>아한대</span>
+    <span><i style="background:#5FA08C"></i>온대몬순</span>
+    <span><i style="background:#C6C05A"></i>열대사바나</span>
+    <span><i style="background:#4FBFA0"></i>열대해양</span>
+    <span><i style="background:#E4622F"></i>기후 없음 (균열)</span>
+  </div>
+</section>
+
+<!-- ══════════ DIPLOMACY ══════════ -->
+<section id="diplo">
+  <div class="sec-head"><span class="sec-num">Ⅱ</span><h2>우호도 관계망</h2></div>
+  <p class="sec-sub">선 색은 부호, 굵기는 크기. 어떤 세력도 친구가 0개이거나 적이 1개뿐이지 않다. 노드를 누르면 해당 세력의 관계만 남습니다.</p>
+
+  <div class="controls" id="edgeCtl">
+    <button class="tog" data-edge="all" aria-pressed="true">전체</button>
+    <button class="tog" data-edge="pos" aria-pressed="false">우호만</button>
+    <button class="tog" data-edge="neg" aria-pressed="false">적대만</button>
+    <button class="tog" data-edge="rival" aria-pressed="false">라이벌 전선만</button>
+  </div>
+
+  <div class="grapharea">
+    <div class="graphbox">
+      <svg class="graph" viewBox="0 0 1000 740" role="img" aria-label="우호도 관계망">
+        <g id="edges"></g><g id="nodes"></g>
+      </svg>
+    </div>
+    <aside class="panel" id="gpanel">
+      <h2 class="pname" id="gName">세력을 선택하세요</h2>
+      <div class="psub" id="gSub">11 FACTIONS · 55 PAIRS</div>
+      <dl id="gBody"><dt>안내</dt><dd>노드를 누르면 그 세력이 맺은 모든 관계와 수치 근거가 표시됩니다.</dd></dl>
+      <div class="scalebar"></div>
+      <div class="scalelab"><span>−100 적대</span><span>0</span><span>+100 우호</span></div>
+    </aside>
+  </div>
+</section>
+
+<!-- ══════════ MATRIX ══════════ -->
+<section id="matrix">
+  <div class="sec-head"><span class="sec-num">Ⅲ</span><h2>55쌍 매트릭스</h2></div>
+  <p class="sec-sub">수작업 표가 아니라 산출 공식의 결과입니다 — 혈통·신앙·생계 일치도에 라이벌 페널티와 근친증오 보정을 더한 값.</p>
+  <div class="mtxscroll"><table class="mtx" id="mtx"></table></div>
+</section>
+
+<!-- ══════════ SYSTEMS ══════════ -->
+<section id="systems">
+  <div class="sec-head"><span class="sec-num">Ⅳ</span><h2>세계가 움직이는 규칙</h2></div>
+  <p class="sec-sub">설정이 아니라 시스템으로 작동해야 하는 것들.</p>
+  <div class="cards">
+    <div class="card"><div class="ct">Identity</div><h3>3축 교차 정체성</h3><p>도시는 <span class="hl">지배 세력</span>과 <span class="hl">주민 정체성</span>을 따로 갖는다. 혈통·신앙·생계 세 축이 지배자와 어긋나면 세수는 줄고 반란 확률은 오르며, 적 세력의 선동 대상이 된다.</p></div>
+    <div class="card"><div class="ct">Fratricide</div><h3>근친증오 보정</h3><p>정체성이 <span class="hl">비슷할수록</span> 전쟁 증오도가 크게 오른다. 제국과 반군이 같은 피를 나눴고 교단과 계율파가 같은 경전을 읽기 때문에, 이 두 전선이 세계에서 가장 잔혹하다.</p></div>
+    <div class="card"><div class="ct">Diaspora</div><h3>이산민 네트워크</h3><p>반군은 영토가 아니라 네트워크로 존재한다. 제국 영토 한복판의 산악족 마을이 보급점이자 첩보망이다. 지도 위 적진 깊숙이 <span class="hl">내 편 점</span>이 박혀 있다.</p></div>
+    <div class="card"><div class="ct">Corruption</div><h3>부패도</h3><p>균열은 <span class="hl">밤에 확장하고 낮에 수축한다.</span> 인접 영지에 부패도가 매 턴 쌓이고, 임계치를 넘으면 영지가 균열에 편입된다. 부패도는 군대가 아니라 인구·신앙·건설로만 낮출 수 있다.</p></div>
+    <div class="card"><div class="ct">Seasons</div><h3>세 개의 계절 이벤트</h3><p>무역풍은 함대 속도에 방향별 보정을 준다. 북부 해협은 겨울에 얼어 <span class="hl">여름엔 없던 침공로</span>가 열린다. 사바나 대하천은 매년 범람해 도하 지점이 바뀐다.</p></div>
+    <div class="card"><div class="ct">Victory</div><h3>명분 박탈</h3><p>제국이 억압을 철회하면 반군은 해체된다. 부족이 옛 정착지를 반환하면 해적은 명분을 잃는다. 옳은 일을 하는 것이 <span class="hl">정치적으로 가장 비싸다.</span></p></div>
+    <div class="card"><div class="ct">Act II</div><h3>승리가 만드는 새 라이벌</h3><p>제국이 반군을 절멸시킨 순간, 교단은 대륙에 남은 유일한 세속 권력을 견제하기 시작한다. 어제의 동맹은 필연적으로 오늘의 적이 된다.</p></div>
+    <div class="card"><div class="ct">Tutorial</div><h3>용병단의 흔적</h3><p>1막에서 데려온 단원들은 혈통이 제각각이다. 제국을 골랐는데 부관이 산악족이라면, 반군 전선에서 <span class="hl">개인 서사</span>가 시작된다. 충성도가 바닥나면 적진에 합류한다.</p></div>
+  </div>
+</section>
+
+<footer>
+  <span>재의 상흔 · 대륙 측량도 · 제 1 판</span>
+  <span>어느 쪽도 옳지 않다 — 하나만 빼고</span>
+</footer>
+</div>
+
+<script>
+const F = [
+ {id:'emp',n:'제국',sub:'AQUILA · ORDER',c:'#C9A227',mx:388,my:600,cap:'아퀼라 프리마',gx:250,gy:330,
+  blood:'내해인',creed:'성좌교',live:'농경평야',rival:'reb',
+  climate:'지중해성 — 건조한 여름, 온화한 습윤 겨울',
+  terrain:'내륙해를 둘러싼 항구도시 사슬. 포장 도로망, 올리브·곡창지대',
+  tactic:'개활지 진형 전투와 기병 돌격에 유리. 도로망으로 행군 속도 보너스',
+  quirk:'방어 지형이 없다. 전선이 한 번 뚫리면 수도까지 직행',
+  goal:'대륙을 질서의 이름 아래 하나로 정리한다'},
+ {id:'reb',n:'반군',sub:'THE UNBOUND',c:'#7FA07A',mx:648,my:462,cap:'고정 수도 없음',gx:410,gy:262,
+  blood:'산악족',creed:'무신',live:'한대수렵',rival:'emp',
+  climate:'고산 냉대 — 겨울에 고갯길이 닫힌다',
+  terrain:'내해 북동을 감싸는 척추 산맥. 협곡, 침엽수림, 소수의 전략 고갯길',
+  tactic:'매복·게릴라·고지 사격. 정면 회전에서는 약하다',
+  quirk:'영토가 아니라 네트워크로 존재한다. 제국 영토 안 산악족 마을이 은신처',
+  goal:'억압받는 모든 것을 제국의 손에서 풀어낸다'},
+ {id:'chu',n:'성좌교단',sub:'THE CONCORD',c:'#DCD3B4',mx:322,my:252,cap:'성좌좌(星座座)',gx:170,gy:150,
+  blood:'내해인',creed:'성좌교',live:'농경평야',rival:'cov',
+  climate:'온대 고원 — 서늘하고 안개가 잦다',
+  terrain:'내해 서북 반도. 계단식 성벽 도시, 순례로, 대성당 요새',
+  tactic:'공성 방어 최강. 순례로를 따라 원정해도 보급 페널티가 없다',
+  quirk:'"경전의 해석권은 교단에 있다" — 해석이 갈리면 질서가 무너진다는 확신',
+  goal:'신의 이름 아래 흩어진 해석을 하나로 되돌린다'},
+ {id:'cov',n:'계율파',sub:'THE COVENANT',c:'#B5763A',mx:456,my:772,cap:'대상로 오아시스 사슬',gx:250,gy:530,
+  blood:'사막민',creed:'계율파',live:'유목건조',rival:'chu',
+  climate:'고온 건조 — 모래폭풍이 시야를 지운다',
+  terrain:'오아시스 도시 사슬. 도시 간 거리가 멀고 그 사이는 공백',
+  tactic:'기동 우위. 오아시스 통제가 곧 보급 통제',
+  quirk:'신성반도와 한때 같은 교구였던 국경 도시들 — 혈통은 사막민, 신앙은 성좌교',
+  goal:'경전과 사람 사이에 선 중간자를 걷어낸다'},
+ {id:'pir',n:'해적',sub:'THE DISPOSSESSED',c:'#5B7A8C',mx:104,my:684,cap:'은신처 다수',gx:80,gy:640,
+  blood:'군도민',creed:'무신',live:'해양',rival:'tri',
+  climate:'열대 해양 — 무역풍이 계절마다 방향을 바꾼다',
+  terrain:'소형 섬 은신처 다수. 거점이 작고 분산돼 점령해도 재출현한다',
+  tactic:'화약·속도·기습 상륙. 지속력과 정면 교전이 약점',
+  quirk:'조상이 세운 세 개의 옛 정착지를 3세대 전 부족에게 빼앗겼다',
+  goal:'빼앗긴 섬을 되찾는다 — 방법은 가리지 않는다'},
+ {id:'tri',n:'산호연맹',sub:'THE REEFBOUND',c:'#3F9B86',mx:206,my:766,cap:'맹그로브 대도',gx:200,gy:660,
+  blood:'군도민',creed:'정령신앙',live:'해양',rival:'pir',
+  climate:'열대 해양 — 우기에 산호가 자란다',
+  terrain:'대형 섬과 맹그로브 해안. 길러낸 산호초가 대형 함선의 진입을 막는다',
+  tactic:'생물병기와 지형 장악. 방어와 소모전에 강하고 기동·원거리가 약하다',
+  quirk:'나중에 왔지만 이미 3세대째 그 땅에 산다 — 양쪽 다 정당한 이유',
+  goal:'세 세대가 뿌리내린 땅과 바다를 지킨다'},
+ {id:'wes',n:'서부 개척연합',sub:'THE FRONTIER',c:'#8E93A8',mx:790,my:512,cap:'철도 종착역',gx:560,gy:390,
+  blood:'개척민',creed:'기계신앙',live:'산업광산',rival:'aby',
+  climate:'반건조 고원 — 일교차가 극심하고 여름엔 뇌우',
+  terrain:'메사와 협곡, 증기 광산, 철도 노선',
+  tactic:'철도로 병력을 순간 재배치. 화력 최강, 근접 최약',
+  quirk:'균열에서 나오는 광물이 산업의 연료다 — 마계에 경제적으로 의존한다',
+  goal:'균열을 자원으로 바꿔 새로운 세계를 세운다'},
+ {id:'nor',n:'북부 피오르드연합',sub:'THE FROSTGATE',c:'#7FB3C4',mx:920,my:198,cap:'빙협 항구',gx:620,gy:110,
+  blood:'북방인',creed:'조상숭배',live:'한대수렵',rival:'aby',
+  climate:'아한대 — 길고 어두운 겨울',
+  terrain:'피오르드, 침엽수림, 빙하해 연안',
+  tactic:'습격 상륙과 돌격 보병. 공성 장비가 부족하다',
+  quirk:'겨울에 해협이 얼어붙어 여름엔 존재하지 않던 육상 침공로가 열린다',
+  goal:'조상이 지키던 북쪽 문을 균열에 내주지 않는다'},
+ {id:'eas',n:'동부 연안연합',sub:'THE THOUSAND CITIES',c:'#A85A5A',mx:1206,my:508,cap:'만성(萬城)',gx:900,gy:320,
+  blood:'동방인',creed:'조상숭배',live:'관개농경',rival:'aby',
+  climate:'온대 몬순 — 우기와 건기가 뚜렷하다',
+  terrain:'계단식 관개농경, 대나무 숲, 화산섬 열도',
+  tactic:'성벽 도시 방어전 특화. 장기전 유리, 초반 확장은 느리다',
+  quirk:'대륙 최대 인구와 완비된 관료제 — 병력 충원 속도 1위',
+  goal:'천 개의 도시가 지켜온 질서를 균열 너머로 넓힌다'},
+ {id:'sou',n:'남부 사바나연합',sub:'THE BEASTKIN',c:'#8FA83F',mx:892,my:812,cap:'범람원 대장(大場)',gx:700,gy:610,
+  blood:'수인',creed:'정령신앙',live:'유목건조',rival:'aby',
+  climate:'열대 사바나 — 우기와 건기가 지형을 바꾼다',
+  terrain:'대하천과 초원. 계절 범람으로 도하 지점이 매년 이동한다',
+  tactic:'대형 야수 기병. 개활지 최강, 공성 최약',
+  quirk:'지도가 매년 실제로 변하는 유일한 지역',
+  goal:'짐승과 사람이 함께 걷는 길을 재가 덮게 두지 않는다'},
+ {id:'aby',n:'마계',sub:'THE ASH SCAR',c:'#E4622F',mx:930,my:520,cap:'없음',gx:720,gy:330,
+  blood:'—',creed:'—',live:'—',rival:'all',
+  climate:'없음 — 상시 재구름이 기후 시스템 자체를 정지시킨다',
+  terrain:'검은 유리 사막. 대륙 중앙동부의 열상(裂傷)',
+  tactic:'밤에 확장하고 낮에 수축한다. 인접 영지에 부패도를 누적시킨다',
+  quirk:'3축 정체성 어디에도 속하지 않는 유일한 존재 — 그래서 외교가 불가능하다',
+  goal:'없다. 이유를 갖지 않는 유일한 세력'}
+];
+
+const R = {
+ 'emp-reb':[-85,'라이벌 −60 · 근친증오(같은 혈통) −25'],
+ 'emp-chu':[30,'신앙 일치 +25 · 생계 일치 +15 · 주도권 갈등 −10'],
+ 'emp-cov':[-25,'신앙 분파 −15 · 생계 무관 · 국경분쟁 −10'],
+ 'emp-pir':[-40,'생계 경쟁(내해 항로) −15 · 봉쇄 분쟁 −25'],
+ 'emp-tri':[10,'해적이라는 공동의 적 +20 · 혈통 무관 −10'],
+ 'emp-wes':[-15,'혈통 인접 +10 · 이탈한 속주 −25'],
+ 'emp-sou':[0,'접점 없음'],
+ 'emp-nor':[-20,'습격 피해 −20'],
+ 'emp-eas':[-10,'질서 대 질서 — 누구의 질서인가 −10'],
+ 'emp-aby':[-70,'존재 위협 −70'],
+ 'reb-chu':[-30,'교단이 제국을 승인 −30'],
+ 'reb-cov':[40,'중앙 권위 거부라는 공통분모 +40'],
+ 'reb-pir':[20,'반체제 동류 +10 · 밀수 루트 공유 +10'],
+ 'reb-tri':[15,'피억압 연대 +15'],
+ 'reb-wes':[25,'개척지로 도망친 동족 네트워크 +25'],
+ 'reb-sou':[20,'유목 생계 일치 +15 · 연대 +5'],
+ 'reb-nor':[10,'한대수렵 생계 일치 +15 · 거리 −5'],
+ 'reb-eas':[-5,'접점 희박'],
+ 'reb-aby':[-60,'산맥이 균열의 북쪽 통로 −60'],
+ 'chu-cov':[-75,'라이벌 −60 · 근친증오(같은 경전) −15'],
+ 'chu-pir':[-35,'순례선 약탈 −35'],
+ 'chu-tri':[-20,'정령신앙을 우상으로 규정 −20'],
+ 'chu-wes':[-20,'기계신앙을 이단으로 규정 −20'],
+ 'chu-sou':[-15,'정령신앙 −15'],
+ 'chu-nor':[-25,'조상숭배를 우상숭배로 규정 −25'],
+ 'chu-eas':[0,'거리와 무관심'],
+ 'chu-aby':[-100,'절대악으로 교리에 명시 −100'],
+ 'cov-pir':[15,'밀무역 파트너 +15'],
+ 'cov-tri':[5,'간접 교역 +5'],
+ 'cov-wes':[10,'광물 교역 +10'],
+ 'cov-sou':[25,'생계 일치 +15 · 사막–사바나 대상로 +10'],
+ 'cov-nor':[0,'접점 없음'],
+ 'cov-eas':[20,'대륙 횡단 교역 +20'],
+ 'cov-aby':[-80,'경전이 균열을 부정으로 규정 −80'],
+ 'pir-tri':[-70,'라이벌 −60 · 영토 청구권 −10'],
+ 'pir-wes':[10,'화약·부품 밀거래 +10'],
+ 'pir-sou':[-10,'연안 약탈 −10'],
+ 'pir-nor':[15,'해양 생계 일치 +15 · 약탈 문화 공유'],
+ 'pir-eas':[-20,'상선 피해 −20'],
+ 'pir-aby':[-50,'교역 붕괴 위협 −50'],
+ 'tri-wes':[-5,'산호초 채굴 마찰 −5'],
+ 'tri-sou':[35,'신앙 일치 +25 · 야수 문화 공유 +10'],
+ 'tri-nor':[-15,'어장 경쟁 −15'],
+ 'tri-eas':[10,'열도 교역 +10'],
+ 'tri-aby':[-65,'정령의 죽음 −65'],
+ 'wes-sou':[30,'균열 방벽 동맹 +20 · 교역 +10'],
+ 'wes-nor':[25,'균열 방벽 동맹 +20 · 광물–모피 +5'],
+ 'wes-eas':[20,'균열 방벽 동맹 +20'],
+ 'wes-aby':[-100,'접경 최전선 −100'],
+ 'sou-nor':[15,'균열 방벽 동맹 +20 · 생계 상충 −5'],
+ 'sou-eas':[30,'균열 방벽 동맹 +20 · 신앙 인접 +10'],
+ 'sou-aby':[-100,'접경 최전선 −100'],
+ 'nor-eas':[20,'신앙 일치 +25 · 항로 경쟁 −5'],
+ 'nor-aby':[-100,'접경 최전선 −100'],
+ 'eas-aby':[-100,'접경 최전선 −100']
+};
+const RIVALS=[['emp','reb'],['chu','cov'],['pir','tri']];
+const byId=Object.fromEntries(F.map(f=>[f.id,f]));
+const key=(a,b)=>R[a+'-'+b]?a+'-'+b:b+'-'+a;
+const rel=(a,b)=>a===b?null:R[key(a,b)];
+const SVGNS='http://www.w3.org/2000/svg';
+const el=(t,at={})=>{const e=document.createElementNS(SVGNS,t);for(const k in at)e.setAttribute(k,at[k]);return e;};
+
+function relColor(v){
+  if(v>0){const t=Math.min(v,100)/100;return `rgb(${Math.round(58+t*21)},${Math.round(90+t*73)},${Math.round(80+t*47)})`;}
+  if(v<0){const t=Math.min(-v,100)/100;return `rgb(${Math.round(88+t*104)},${Math.round(76-t*4)},${Math.round(72-t*9)})`;}
+  return '#4A5652';
+}
+
+/* ── map faction markers ── */
+const fl=document.getElementById('L-factions');
+F.forEach(f=>{
+  const g=el('g',{class:'region',
+    'data-f':f.id,style:'cursor:pointer'});
+  g.appendChild(el('circle',{cx:f.mx,cy:f.my,r:16,fill:'none',stroke:f.c,'stroke-width':1.2,opacity:.5}));
+  g.appendChild(el('circle',{cx:f.mx,cy:f.my,r:7,fill:f.c,stroke:'#0A1F1E','stroke-width':2}));
+  const right=f.mx<1080;
+  const t=el('text',{x:f.mx+(right?26:-26),y:f.my+2,class:'fname','text-anchor':right?'start':'end'});
+  t.textContent=f.n; g.appendChild(t);
+  const c=el('text',{x:f.mx+(right?26:-26),y:f.my+18,class:'fcap','text-anchor':right?'start':'end'});
+  c.textContent=f.sub; g.appendChild(c);
+  fl.appendChild(g);
+});
+
+/* rival front lines on map */
+const rf=el('g',{opacity:.55});
+RIVALS.forEach(([a,b])=>{
+  const A=byId[a],B=byId[b];
+  rf.appendChild(el('line',{x1:A.mx,y1:A.my,x2:B.mx,y2:B.my,stroke:'#C0503F','stroke-width':2,'stroke-dasharray':'3 6'}));
+});
+fl.insertBefore(rf,fl.firstChild);
+
+/* ── panel ── */
+const pName=document.getElementById('pName'),pSub=document.getElementById('pSub'),
+      pBody=document.getElementById('pBody'),pBadges=document.getElementById('pBadges'),
+      pHint=document.getElementById('pHint');
+function showRegion(id){
+  const f=byId[id];
+  pName.textContent=f.n; pName.style.color=f.c;
+  pSub.textContent=f.sub;
+  pBody.innerHTML=[['목표',f.goal],['기후',f.climate],['지형',f.terrain],['전술',f.tactic],['특이',f.quirk],['거점',f.cap]]
+    .map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('');
+  pBadges.innerHTML=[['혈통',f.blood],['신앙',f.creed],['생계',f.live]]
+    .map(([k,v])=>`<span class="idb">${k} · ${v}</span>`).join('');
+  const rv=f.rival==='all'?'전 세력':(byId[f.rival]?byId[f.rival].n:'—');
+  pHint.textContent='라이벌 전선 — '+rv;
+  document.querySelectorAll('.region').forEach(r=>r.classList.toggle('dim',r.dataset.f!==id));
+}
+document.querySelectorAll('.region').forEach(r=>{
+  r.addEventListener('click',()=>showRegion(r.dataset.f));
+  r.addEventListener('mouseenter',()=>showRegion(r.dataset.f));
+});
+document.querySelector('svg.map').addEventListener('mouseleave',()=>{
+  document.querySelectorAll('.region').forEach(r=>r.classList.remove('dim'));
+});
+
+/* ── layer toggles ── */
+document.getElementById('layerCtl').addEventListener('click',e=>{
+  const b=e.target.closest('.tog'); if(!b)return;
+  const on=b.getAttribute('aria-pressed')==='true';
+  b.setAttribute('aria-pressed',String(!on));
+  document.getElementById('L-'+b.dataset.layer).classList.toggle('off',on);
+});
+
+/* ── graph ── */
+const eg=document.getElementById('edges'),ng=document.getElementById('nodes'),edgeEls=[];
+Object.keys(R).forEach(k=>{
+  const [a,b]=k.split('-'),v=R[k][0];
+  if(Math.abs(v)<15)return;
+  const A=byId[a],B=byId[b];
+  const isRival=RIVALS.some(([x,y])=>(x===a&&y===b)||(x===b&&y===a));
+  const ln=el('line',{x1:A.gx,y1:A.gy,x2:B.gx,y2:B.gy,class:'edge',
+    stroke:relColor(v),'stroke-width':(Math.abs(v)/100*5+.7).toFixed(2),
+    'stroke-opacity':.72,'stroke-dasharray':v<0?(isRival?'':'7 5'):''});
+  ln.dataset.a=a;ln.dataset.b=b;ln.dataset.v=v;ln.dataset.rival=isRival;
+  eg.appendChild(ln);edgeEls.push(ln);
+});
+F.forEach(f=>{
+  const g=el('g',{class:'node','data-f':f.id});
+  const isAby=f.id==='aby';
+  g.appendChild(el('circle',{cx:f.gx,cy:f.gy,r:isAby?24:17,fill:'#0F2C29',stroke:f.c,'stroke-width':isAby?3:2}));
+  g.appendChild(el('circle',{cx:f.gx,cy:f.gy,r:isAby?11:6,fill:f.c}));
+  const t=el('text',{x:f.gx,y:f.gy+(isAby?44:36),class:'nlabel','text-anchor':'middle'});
+  t.textContent=f.n;g.appendChild(t);
+  ng.appendChild(g);
+});
+const gName=document.getElementById('gName'),gSub=document.getElementById('gSub'),gBody=document.getElementById('gBody');
+let focus=null,mode='all';
+function applyEdges(){
+  edgeEls.forEach(l=>{
+    const v=+l.dataset.v;
+    let ok = mode==='all' ? true : mode==='pos' ? v>0 : mode==='neg' ? v<0 : l.dataset.rival==='true';
+    if(focus) ok = ok && (l.dataset.a===focus||l.dataset.b===focus);
+    l.classList.toggle('faded',!ok);
+  });
+  document.querySelectorAll('.node').forEach(n=>{
+    n.classList.toggle('faded',!!focus && n.dataset.f!==focus && !rel(focus,n.dataset.f));
+  });
+}
+document.querySelectorAll('.node').forEach(n=>{
+  n.addEventListener('click',()=>{
+    const id=n.dataset.f;
+    focus = focus===id ? null : id;
+    if(focus){
+      const f=byId[id];
+      gName.textContent=f.n;gName.style.color=f.c;gSub.textContent=f.sub;
+      const rows=F.filter(o=>o.id!==id).map(o=>({o,r:rel(id,o.id)})).sort((x,y)=>y.r[0]-x.r[0]);
+      gBody.innerHTML=rows.map(({o,r})=>
+        `<dt style="color:${relColor(r[0])}">${r[0]>0?'+':''}${r[0]}</dt><dd><b style="font-weight:600">${o.n}</b><br><span style="font-size:11.5px;color:var(--bone-dim)">${r[1]}</span></dd>`).join('');
+    }else{
+      gName.textContent='세력을 선택하세요';gName.style.color='';gSub.textContent='11 FACTIONS · 55 PAIRS';
+      gBody.innerHTML='<dt>안내</dt><dd>노드를 누르면 그 세력이 맺은 모든 관계와 수치 근거가 표시됩니다.</dd>';
+    }
+    applyEdges();
+  });
+});
+document.getElementById('edgeCtl').addEventListener('click',e=>{
+  const b=e.target.closest('.tog'); if(!b)return;
+  mode=b.dataset.edge;
+  document.querySelectorAll('#edgeCtl .tog').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));
+  applyEdges();
+});
+
+/* ── matrix ── */
+const mtx=document.getElementById('mtx');
+let html='<tr><th class="rowh"></th>'+F.map(f=>`<th>${f.n}</th>`).join('')+'</tr>';
+F.forEach(a=>{
+  html+=`<tr><th class="rowh">${a.n}</th>`;
+  F.forEach(b=>{
+    if(a.id===b.id){html+='<td class="self">—</td>';return;}
+    const v=rel(a.id,b.id)[0];
+    html+=`<td style="background:${relColor(v)}" title="${rel(a.id,b.id)[1]}">${v>0?'+':''}${v}</td>`;
+  });
+  html+='</tr>';
+});
+mtx.innerHTML=html;
+</script>
+</body>
+</html>
