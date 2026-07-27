@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>성향 편집기 — 재의 상흔</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600&family=Noto+Sans+KR:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --plate:#0A1F1E;--plate2:#0F2C29;--plate3:#143733;--line:#2A4A44;
+  --brass:#CBA135;--brass2:#8C6F2A;--brass3:#5A4A22;
+  --bone:#E9E1CB;--dim:#93A099;--ember:#E4622F;
+  --serif:'Noto Serif KR',Georgia,serif;--sans:'Noto Sans KR',system-ui,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--plate);color:var(--bone);font-family:var(--sans);font-weight:300;
+  font-size:13px;display:flex;flex-direction:column;overflow:hidden}
+
+.top{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line);
+  background:var(--plate2);flex-wrap:wrap}
+.brand{font-family:var(--serif);font-weight:600;font-size:16px;white-space:nowrap}
+.brand span{color:var(--ember)}
+.spacer{flex:1}
+.btn{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  background:transparent;color:var(--brass2);border:1px solid var(--brass3);padding:7px 11px;
+  cursor:pointer;border-radius:1px;transition:.15s;white-space:nowrap}
+.btn:hover{color:var(--bone);border-color:var(--brass2)}
+.btn.primary{background:var(--brass);color:#0A1F1E;border-color:var(--brass);font-weight:600}
+.btn:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+
+.body{flex:1;display:grid;grid-template-columns:214px minmax(0,1fr) 330px;min-height:0}
+.rail,.side{background:var(--plate2);overflow-y:auto}
+.rail{border-right:1px solid var(--line)}
+.side{border-left:1px solid var(--line)}
+.mid{overflow-y:auto;display:flex;flex-direction:column;min-width:0}
+
+.ph{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;color:var(--brass2);text-transform:uppercase;
+  padding:12px 14px 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--plate2);z-index:2}
+.pad{padding:13px 15px}
+.oitem{display:flex;align-items:center;gap:9px;padding:8px 14px;cursor:pointer;
+  border-left:2px solid transparent;font-size:12.5px}
+.oitem:hover{background:var(--plate3)}
+.oitem.sel{background:var(--plate3);border-left-color:var(--brass)}
+.dot{width:10px;height:10px;flex:0 0 10px;border-radius:50%;border:1px solid rgba(0,0,0,.4)}
+.dot.sq{border-radius:1px}
+.oitem .meta{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--brass2)}
+
+.chartwrap{display:flex;justify-content:center;padding:16px 16px 4px}
+svg.radar{width:100%;max-width:520px;height:auto;touch-action:none}
+.axline{stroke:#25443F;stroke-width:1}
+.ring{fill:none;stroke:#1D3A36;stroke-width:1}
+.ring.major{stroke:#2E5852}
+.axlabel{font-family:var(--sans);font-size:13px;font-weight:400;fill:var(--bone)}
+.axval{font-family:var(--mono);font-size:11px;fill:var(--brass2)}
+.handle{cursor:grab;transition:r .12s}
+.handle:hover{r:9}
+.handle:active{cursor:grabbing}
+.cmp{opacity:.55}
+
+.hd{font-family:var(--serif);font-size:22px;font-weight:600;margin:0}
+.hsub{font-family:var(--mono);font-size:10px;letter-spacing:.15em;color:var(--brass2);margin-top:4px;text-transform:uppercase}
+
+.field{margin-bottom:12px}
+.field label{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.12em;color:var(--brass2);text-transform:uppercase;margin-bottom:5px}
+.field label b{color:var(--bone);font-weight:400}
+input[type=range]{width:100%;accent-color:var(--brass);height:18px}
+.field input[type=text],.field textarea,.field select{width:100%;background:var(--plate);
+  border:1px solid var(--brass3);color:var(--bone);padding:7px 9px;font-size:12px;font-family:var(--sans)}
+.field textarea{min-height:52px;resize:vertical;line-height:1.55}
+.hint{font-size:11.5px;color:var(--dim);line-height:1.65}
+
+.distrow{margin-bottom:7px}
+.distrow .lab{display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:3px}
+.distrow .lab span:last-child{font-family:var(--mono);font-size:10.5px;color:var(--brass2)}
+.bar{height:7px;background:#12312D;overflow:hidden}
+.bar i{display:block;height:100%}
+
+.biasrow{display:grid;grid-template-columns:14px 1fr 42px;gap:8px;align-items:center;margin-bottom:6px;font-size:11.5px}
+.biasrow input{width:100%}
+.biasrow .bv{font-family:var(--mono);font-size:10px;color:var(--brass2);text-align:right}
+
+.matrix{padding:6px 16px 26px}
+.mtxscroll{overflow-x:auto;border:1px solid var(--line)}
+table{border-collapse:collapse;font-family:var(--mono);font-size:10.5px;width:100%;min-width:820px}
+th{font-weight:400;color:var(--brass2);padding:9px 5px;font-size:9.5px;letter-spacing:.05em;white-space:nowrap}
+th.rowh{text-align:right;position:sticky;left:0;background:var(--plate2);color:var(--bone);padding-right:12px;z-index:1}
+td{text-align:center;padding:7px 4px;color:#0A1F1E;font-weight:600}
+td.zero{background:#102D2A;color:#3E5D57;font-weight:400}
+tr:hover td{outline:1px solid rgba(203,161,53,.3)}
+.tag{display:inline-block;font-family:var(--mono);font-size:9px;letter-spacing:.08em;border:1px solid var(--brass3);
+  color:var(--dim);padding:3px 7px;margin:0 4px 4px 0}
+.toast{position:fixed;right:16px;top:60px;background:var(--plate2);border:1px solid var(--brass);
+  color:var(--bone);padding:9px 14px;font-size:12px;opacity:0;transition:.25s;pointer-events:none;z-index:9}
+.toast.on{opacity:1}
+
+@media (max-width:1080px){
+  .body{grid-template-columns:1fr;overflow-y:auto}
+  .rail,.side{max-height:none;border:0;border-top:1px solid var(--line)}
+  body{overflow:auto}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand">성향 <span>편집기</span></div>
+  <span class="tag" style="margin:0">5축 · 종족 11 · 세력 11</span>
+  <div class="spacer"></div>
+  <button class="btn" id="btnReset">기본값</button>
+  <button class="btn" id="btnImport">불러오기</button>
+  <button class="btn primary" id="btnJson">JSON 저장</button>
+  <button class="btn" id="btnCsv">CSV 저장</button>
+  <input type="file" id="fileIn" accept=".json" hidden>
+</div>
+
+<div class="body">
+  <div class="rail">
+    <div class="ph">종족</div><div id="listRace"></div>
+    <div class="ph">세력</div><div id="listFac"></div>
+  </div>
+
+  <div class="mid">
+    <div class="pad" style="padding-bottom:0">
+      <h1 class="hd" id="hName">—</h1>
+      <div class="hsub" id="hSub"></div>
+    </div>
+    <div class="chartwrap">
+      <svg class="radar" id="radar" viewBox="0 0 600 560"></svg>
+    </div>
+    <div class="pad" style="padding-top:0">
+      <div class="field" style="max-width:340px;margin:0 auto">
+        <label>겹쳐 보기</label>
+        <select id="cmpSel"><option value="">없음</option></select>
+      </div>
+    </div>
+
+    <div class="ph" style="position:static">전체 인구 분포 (%)</div>
+    <div class="matrix">
+      <div class="mtxscroll"><table id="mtx"></table></div>
+      <div class="hint" style="margin-top:12px">
+        각 칸은 <b style="color:var(--bone)">그 세력 인구 중 해당 종족의 비율</b>입니다. 세로 합이 100%.
+        성향 유사도와 집중도, 보정치로 자동 산출되며 값을 만지면 즉시 갱신됩니다.
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="ph">성향 5축</div>
+    <div class="pad" id="panAxes"></div>
+    <div id="panFac"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════ 축 ═══════════ */
+const AXES=[
+ {id:'order',   name:'질서',  desc:'규칙 · 위계 · 등록 · 관료'},
+ {id:'liberty', name:'자유',  desc:'자율 · 개인 · 이동 · 무정부'},
+ {id:'faith',   name:'신앙',  desc:'교리 · 초월 · 헌신'},
+ {id:'industry',name:'기술',  desc:'공학 · 개조 · 화력'},
+ {id:'nature',  name:'자연',  desc:'정령 · 야수 · 토지 · 순환'}
+];
+const A=AXES.map(a=>a.id);
+
+/* ═══════════ 기본 데이터 ═══════════ */
+function defaults(){
+ const races=[
+  ['race_human','인간','#E0CFA0',[70,55,65,58,42],2.4,'어디에나 있는 다수 종족. 어느 축에도 극단이 없어 거의 모든 세력에 섞인다'],
+  ['race_dwarf','드워프','#C07C3E',[88,28,45,82,32],1.0,'룬과 광산. 규칙과 공정을 지키는 장인 기질'],
+  ['race_elf','엘프','#6FC2A0',[62,42,88,32,74],0.8,'고대의 해석권을 쥔 장수 종족. 교리와 숲을 동시에 섬긴다'],
+  ['race_goblin','고블린','#9FBF3B',[14,86,22,66,32],1.6,'고철과 즉흥. 규칙을 우회하는 데 능하다'],
+  ['race_orc','오크','#6E9445',[18,92,40,24,62],1.4,'속박을 견디지 못한다. 부족과 반란에 가장 먼저 합류'],
+  ['race_ogre','오우거','#A8894F',[24,82,34,18,72],0.7,'거대하고 느슨하다. 위계보다 무리를 따른다'],
+  ['race_troll','트롤','#4F9E8C',[30,70,72,14,86],0.9,'부두와 정령. 자유롭되 조상의 규율을 지킨다'],
+  ['race_undead','언데드','#8A7FB5',[58,16,58,42,6],0.9,'명령 계통은 남았으나 살아있는 순환에서 벗어났다'],
+  ['race_machine','기계','#8E93A8',[92,12,26,98,4],1.1,'규격 그 자체. 자연과 가장 멀다'],
+  ['race_beast','동물','#D9A441',[24,78,62,10,96],1.3,'수인. 무리와 땅에 묶이고 규격을 거부한다'],
+  ['race_dragon','드래곤','#C0503F',[50,55,78,30,66],0.25,'고대의 자부심. 개체 수가 극히 적다']
+ ].map(([id,name,color,v,pop,note])=>({id,name,color,traits:vec(v),pop,note}));
+
+ const factions=[
+  ['fac_empire','제국','#C9A227',[95,15,55,62,30],0.55,
+   {race_human:2.1,race_dwarf:0.95,race_undead:0.08,race_orc:0.45,race_beast:0.5,race_ogre:0.5},'관료제 · 등록 · 표준화'],
+  ['fac_rebel','반군','#7FA07A',[6,100,26,46,56],0.05,
+   {race_human:0.95,race_dragon:1.6},'다민족 혼성 — 명부 밖의 모든 종족이 고르게 섞인다'],
+  ['fac_church','성좌교단','#DCD3B4',[80,20,100,30,36],0.62,
+   {race_elf:2.0,race_human:1.5,race_undead:0.03,race_dragon:0.5,race_goblin:0.4},'해석권 독점 · 빛'],
+  ['fac_covenant','계율파','#B5763A',[34,76,92,28,44],0.55,
+   {race_human:1.8,race_troll:1.2,race_dragon:0.45,race_elf:0.8},'경전 직독 · 대상로'],
+  ['fac_pirate','해적','#5B7A8C',[10,95,16,56,50],0.38,
+   {race_goblin:1.1,race_beast:5.0,race_orc:1.3,race_dragon:0.5},'약탈 · 재출현 · 무신'],
+  ['fac_reef','산호연맹','#3F9B86',[44,62,80,14,96],0.60,
+   {race_beast:1.7,race_troll:0.9,race_orc:2.4,race_ogre:2.2,race_dragon:0.4},'정령 · 산호 · 방어'],
+  ['fac_frontier','서부 개척연합','#8E93A8',[72,52,18,100,12],1.00,
+   {race_machine:3.0,race_dwarf:0.9,race_human:0.8},'증기 · 철도 · 이중 광맥'],
+  ['fac_north','북부 피오르드연합','#7FB3C4',[40,80,66,26,72],0.58,
+   {race_ogre:2.4,race_orc:1.4,race_dragon:0.5,race_human:1.1},'조상 · 결빙 · 습격'],
+  ['fac_east','동부 연안연합','#A85A5A',[90,26,70,56,50],0.52,
+   {race_human:1.25,race_dragon:4.0,race_dwarf:0.7,race_undead:0.4},'관료 · 만성 · 관개'],
+  ['fac_south','남부 사바나연합','#8FA83F',[34,72,74,14,100],0.72,
+   {race_beast:2.1,race_ogre:1.2,race_troll:0.85,race_dragon:0.5},'수인 · 범람 · 야수'],
+  ['fac_abyss','마계','#E4622F',[60,10,45,50,0],0.60,
+   {race_undead:1.5,race_dragon:1.6,race_beast:0.1,race_human:0.25,race_dwarf:0.2,race_machine:0.5},'정체성 없음 · 계약']
+ ].map(([id,name,color,v,conc,bias,note])=>({id,name,color,traits:vec(v),conc,bias:{...bias},note}));
+
+ return {axes:AXES.map(a=>a.id),races,factions};
+}
+const vec=arr=>Object.fromEntries(A.map((k,i)=>[k,arr[i]]));
+
+/* ═══════════ 상태 ═══════════ */
+let D=defaults(), sel={t:'fac',id:'fac_frontier'}, cmp='';
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const SVGNS='http://www.w3.org/2000/svg';
+const mk=(t,a={})=>{const e=document.createElementNS(SVGNS,t);for(const k in a)e.setAttribute(k,a[k]);return e;};
+const race=id=>D.races.find(r=>r.id===id);
+const fact=id=>D.factions.find(f=>f.id===id);
+const cur=()=>sel.t==='race'?race(sel.id):fact(sel.id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ═══════════ 분포 산출 ═══════════ */
+const MAXD=Math.sqrt(A.length*100*100);
+function similarity(a,b){
+  let s=0;for(const k of A){const d=a[k]-b[k];s+=d*d;}
+  return 1-Math.sqrt(s)/MAXD;
+}
+function distributionFor(f){
+  const K=2+f.conc*22;
+  const raw=D.races.map(r=>{
+    const w=Math.exp(similarity(r.traits,f.traits)*K)*(r.pop??1)*(f.bias?.[r.id]??1);
+    return {id:r.id,w};
+  });
+  const sum=raw.reduce((a,b)=>a+b.w,0)||1;
+  const out={};raw.forEach(x=>out[x.id]=x.w/sum*100);
+  return out;
+}
+function allDistributions(){
+  const m={};D.factions.forEach(f=>m[f.id]=distributionFor(f));return m;
+}
+
+/* ═══════════ 레이더 ═══════════ */
+const CX=300,CY=286,R=196;
+function axisPt(i,v){
+  const ang=-Math.PI/2+i*2*Math.PI/A.length, r=R*v/100;
+  return [CX+Math.cos(ang)*r, CY+Math.sin(ang)*r];
+}
+function polyStr(tr){return A.map((k,i)=>axisPt(i,tr[k]).join(',')).join(' ');}
+
+function drawRadar(){
+  const svg=$('#radar');svg.innerHTML='';
+  const e=cur();if(!e)return;
+
+  // rings
+  [20,40,60,80,100].forEach(v=>{
+    svg.appendChild(mk('polygon',{points:A.map((k,i)=>axisPt(i,v).join(',')).join(' '),
+      class:'ring'+(v===100?' major':''),fill:'none'}));
+  });
+  // axes + labels
+  A.forEach((k,i)=>{
+    const [x,y]=axisPt(i,100);
+    svg.appendChild(mk('line',{x1:CX,y1:CY,x2:x,y2:y,class:'axline'}));
+    const [lx,ly]=axisPt(i,124);
+    const anchor=Math.abs(lx-CX)<8?'middle':(lx>CX?'start':'end');
+    const t=mk('text',{x:lx,y:ly,class:'axlabel','text-anchor':anchor});
+    t.textContent=AXES[i].name;svg.appendChild(t);
+    const v=mk('text',{x:lx,y:ly+16,class:'axval','text-anchor':anchor});
+    v.textContent=Math.round(e.traits[k]);svg.appendChild(v);
+  });
+  // comparison
+  if(cmp){
+    const c=race(cmp)||fact(cmp);
+    if(c){
+      svg.appendChild(mk('polygon',{points:polyStr(c.traits),fill:c.color,'fill-opacity':.10,
+        stroke:c.color,'stroke-width':1.6,'stroke-dasharray':'6 5',class:'cmp'}));
+    }
+  }
+  // main polygon
+  svg.appendChild(mk('polygon',{points:polyStr(e.traits),fill:e.color,'fill-opacity':.20,
+    stroke:e.color,'stroke-width':2.4}));
+  // handles
+  A.forEach((k,i)=>{
+    const [x,y]=axisPt(i,e.traits[k]);
+    const h=mk('circle',{cx:x,cy:y,r:7,fill:e.color,stroke:'#0A1F1E','stroke-width':2,class:'handle'});
+    h.addEventListener('pointerdown',ev=>{
+      ev.preventDefault();svg.setPointerCapture(ev.pointerId);
+      const move=me=>{
+        const r=svg.getBoundingClientRect();
+        const px=(me.clientX-r.left)/r.width*600, py=(me.clientY-r.top)/r.height*560;
+        const ang=-Math.PI/2+i*2*Math.PI/A.length;
+        const proj=(px-CX)*Math.cos(ang)+(py-CY)*Math.sin(ang);
+        e.traits[k]=Math.max(0,Math.min(100,Math.round(proj/R*100)));
+        refresh(true);
+      };
+      const up=()=>{svg.removeEventListener('pointermove',move);svg.removeEventListener('pointerup',up);};
+      svg.addEventListener('pointermove',move);svg.addEventListener('pointerup',up);
+    });
+    svg.appendChild(h);
+  });
+}
+
+/* ═══════════ 목록 ═══════════ */
+function drawLists(){
+  const dist=allDistributions();
+  $('#listRace').innerHTML=D.races.map(r=>{
+    const top=D.factions.map(f=>({f,v:dist[f.id][r.id]})).sort((a,b)=>b.v-a.v)[0];
+    return `<div class="oitem${sel.t==='race'&&sel.id===r.id?' sel':''}" data-t="race" data-id="${r.id}">
+      <span class="dot" style="background:${r.color}"></span><span>${r.name}</span>
+      <span class="meta">${top?esc(top.f.name.slice(0,4)):''}</span></div>`;}).join('');
+  $('#listFac').innerHTML=D.factions.map(f=>{
+    const top=D.races.map(r=>({r,v:dist[f.id][r.id]})).sort((a,b)=>b.v-a.v)[0];
+    return `<div class="oitem${sel.t==='fac'&&sel.id===f.id?' sel':''}" data-t="fac" data-id="${f.id}">
+      <span class="dot sq" style="background:${f.color}"></span><span>${f.name}</span>
+      <span class="meta">${top?Math.round(top.v)+'%':''}</span></div>`;}).join('');
+  $$('.oitem').forEach(o=>o.onclick=()=>{sel={t:o.dataset.t,id:o.dataset.id};refresh();});
+}
+
+/* ═══════════ 우측 패널 ═══════════ */
+function drawSide(){
+  const e=cur();if(!e)return;
+  $('#hName').textContent=e.name;
+  $('#hName').style.color=e.color;
+  $('#hSub').textContent=(sel.t==='race'?'RACE · ':'FACTION · ')+e.id;
+
+  $('#panAxes').innerHTML=AXES.map(a=>`
+    <div class="field">
+      <label>${a.name} <b>${Math.round(e.traits[a.id])}</b></label>
+      <input type="range" min="0" max="100" value="${e.traits[a.id]}" data-ax="${a.id}">
+      <div class="hint" style="font-size:10.5px;margin-top:2px">${a.desc}</div>
+    </div>`).join('')
+    +(sel.t==='race'?`
+    <div class="field" style="border-top:1px solid var(--line);padding-top:12px">
+      <label>인구 규모 <b>×${(e.pop??1).toFixed(2)}</b></label>
+      <input type="range" min="0.05" max="3" step="0.05" value="${e.pop??1}" id="popR">
+      <div class="hint" style="font-size:10.5px;margin-top:2px">
+        세계 전체에서 이 종족이 얼마나 흔한가. 드래곤처럼 희귀한 종족은 낮게 둡니다.</div>
+    </div>`:'')
+    +`<div class="field"><label>메모</label><textarea id="noteBox">${esc(e.note||'')}</textarea></div>`;
+  $$('#panAxes [data-ax]').forEach(s=>s.oninput=ev=>{
+    e.traits[s.dataset.ax]=+ev.target.value;refresh(true);});
+  if($('#popR'))$('#popR').oninput=ev=>{e.pop=+ev.target.value;refresh(true);};
+  $('#noteBox').oninput=ev=>{e.note=ev.target.value;};
+
+  const p=$('#panFac');
+  if(sel.t==='fac'){
+    const dist=distributionFor(e);
+    const sorted=D.races.map(r=>({r,v:dist[r.id]})).sort((a,b)=>b.v-a.v);
+    p.innerHTML=`<div class="ph" style="position:static">인구 분포</div><div class="pad">
+      <div class="field">
+        <label>집중도 <b>${e.conc.toFixed(2)}</b></label>
+        <input type="range" min="0" max="1" step="0.01" value="${e.conc}" id="concR">
+        <div class="hint" style="font-size:10.5px;margin-top:2px">
+          0에 가까울수록 여러 종족이 고르게 섞이고, 1에 가까울수록 한 종족이 지배합니다.</div>
+      </div>
+      ${sorted.map(({r,v})=>`
+        <div class="distrow"><div class="lab"><span>${r.name}</span><span>${v.toFixed(1)}%</span></div>
+        <div class="bar"><i style="width:${v}%;background:${r.color}"></i></div></div>`).join('')}
+      <div class="hint" style="margin-top:12px">
+        상위 3종족 합 <b style="color:var(--bone)">${sorted.slice(0,3).reduce((a,b)=>a+b.v,0).toFixed(1)}%</b>
+        · 유효 종족 수 <b style="color:var(--bone)">${effRaces(dist).toFixed(2)}</b></div>
+      </div>
+      <div class="ph" style="position:static">종족 가중치 보정</div><div class="pad">
+      <div class="hint" style="margin-bottom:11px">성향만으로 설명되지 않는 역사적 이유를 여기서 넣습니다. 1.0 = 보정 없음.</div>
+      ${D.races.map(r=>{const b=e.bias?.[r.id]??1;return `
+        <div class="biasrow">
+          <span class="dot" style="background:${r.color}"></span>
+          <input type="range" min="0" max="3" step="0.05" value="${b}" data-bias="${r.id}">
+          <span class="bv" id="bv_${r.id}">×${b.toFixed(2)}</span>
+        </div>`;}).join('')}
+      <button class="btn" id="biasReset" style="width:100%;margin-top:9px">보정 초기화</button>
+      </div>`;
+    $('#concR').oninput=ev=>{e.conc=+ev.target.value;refresh(true);};
+    $$('#panFac [data-bias]').forEach(s=>s.oninput=ev=>{
+      e.bias=e.bias||{};e.bias[s.dataset.bias]=+ev.target.value;
+      $('#bv_'+s.dataset.bias).textContent='×'+(+ev.target.value).toFixed(2);
+      refreshDistOnly();});
+    $('#biasReset').onclick=()=>{e.bias={};refresh();};
+  }else{
+    const all=allDistributions();
+    const rows=D.factions.map(f=>({f,v:all[f.id][e.id]})).sort((a,b)=>b.v-a.v);
+    const share=D.factions.map(f=>all[f.id][e.id]);
+    p.innerHTML=`<div class="ph" style="position:static">세력별 존재 비율</div><div class="pad">
+      <div class="hint" style="margin-bottom:11px">
+        각 세력 인구 중 <b style="color:${e.color}">${e.name}</b>이(가) 차지하는 비율입니다.</div>
+      ${rows.map(({f,v})=>`
+        <div class="distrow"><div class="lab"><span>${f.name}</span><span>${v.toFixed(1)}%</span></div>
+        <div class="bar"><i style="width:${Math.min(100,v)}%;background:${f.color}"></i></div></div>`).join('')}
+      <div class="hint" style="margin-top:12px">
+        최다 <b style="color:var(--bone)">${rows[0].f.name}</b> ·
+        평균 ${(share.reduce((a,b)=>a+b,0)/share.length).toFixed(1)}%</div></div>`;
+  }
+}
+function effRaces(dist){ // 유효 종족 수 = 1 / Σp²  (허핀달 역수)
+  const s=Object.values(dist).reduce((a,b)=>a+(b/100)**2,0);
+  return s?1/s:0;
+}
+function refreshDistOnly(){
+  const e=cur();
+  if(sel.t==='fac'){
+    const dist=distributionFor(e);
+    const sorted=D.races.map(r=>({r,v:dist[r.id]})).sort((a,b)=>b.v-a.v);
+    const rows=$$('#panFac .distrow');
+    // 순서가 바뀔 수 있어 전체 재생성이 안전
+    if(rows.length){drawSide();}
+  }
+  drawMatrix();drawLists();
+}
+
+/* ═══════════ 매트릭스 ═══════════ */
+function heat(v){
+  const t=Math.min(v,60)/60;
+  const r=Math.round(18+t*185),g=Math.round(49+t*112),b=Math.round(47+t*6);
+  return `rgb(${r},${g},${b})`;
+}
+function drawMatrix(){
+  const dist=allDistributions();
+  let h='<tr><th class="rowh"></th>'+D.factions.map(f=>`<th>${f.name.replace(/\s.*/,'')}</th>`).join('')+'</tr>';
+  D.races.forEach(r=>{
+    h+=`<tr><th class="rowh">${r.name}</th>`;
+    D.factions.forEach(f=>{
+      const v=dist[f.id][r.id];
+      h+=v<0.5?`<td class="zero">·</td>`
+        :`<td style="background:${heat(v)}" title="${f.name} — ${r.name} ${v.toFixed(1)}%">${v.toFixed(0)}</td>`;
+    });
+    h+='</tr>';
+  });
+  h+='<tr><th class="rowh" style="color:var(--brass2)">유효 종족 수</th>'
+    +D.factions.map(f=>`<td class="zero">${effRaces(dist[f.id]).toFixed(1)}</td>`).join('')+'</tr>';
+  $('#mtx').innerHTML=h;
+}
+
+/* ═══════════ 겹쳐보기 ═══════════ */
+function drawCmpSel(){
+  $('#cmpSel').innerHTML='<option value="">없음</option>'
+    +'<optgroup label="종족">'+D.races.map(r=>`<option value="${r.id}" ${cmp===r.id?'selected':''}>${r.name}</option>`).join('')+'</optgroup>'
+    +'<optgroup label="세력">'+D.factions.map(f=>`<option value="${f.id}" ${cmp===f.id?'selected':''}>${f.name}</option>`).join('')+'</optgroup>';
+  $('#cmpSel').onchange=ev=>{cmp=ev.target.value;drawRadar();};
+}
+
+/* ═══════════ 파일 ═══════════ */
+function payload(){
+  const dist=allDistributions();
+  return {
+    schema:'ashscar.disposition.v1',
+    axes:AXES,
+    races:D.races.map(r=>({id:r.id,name:r.name,color:r.color,traits:r.traits,pop:r.pop??1,note:r.note})),
+    factions:D.factions.map(f=>({id:f.id,name:f.name,color:f.color,traits:f.traits,
+      concentration:+f.conc.toFixed(3),bias:f.bias,note:f.note})),
+    formula:{
+      similarity:'1 - euclidean(race.traits, faction.traits) / sqrt(5*100^2)',
+      weight:'exp(similarity * (2 + concentration*22)) * race.pop * bias[race]',
+      share:'weight / sum(weights) * 100'
+    },
+    population:Object.fromEntries(D.factions.map(f=>[f.id,
+      Object.fromEntries(D.races.map(r=>[r.id,+dist[f.id][r.id].toFixed(2)]))]))
+  };
+}
+function dl(name,text,type){
+  const b=new Blob([text],{type}),u=URL.createObjectURL(b),a=document.createElement('a');
+  a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);}
+$('#btnJson').onclick=()=>{dl('race-disposition.json',JSON.stringify(payload(),null,2),'application/json');toast('JSON 저장됨');};
+$('#btnCsv').onclick=()=>{
+  const dist=allDistributions();
+  let c='race,'+D.factions.map(f=>f.name).join(',')+'\n';
+  D.races.forEach(r=>{c+=r.name+','+D.factions.map(f=>dist[f.id][r.id].toFixed(2)).join(',')+'\n';});
+  dl('race-distribution.csv','\uFEFF'+c,'text/csv');toast('CSV 저장됨');};
+$('#btnImport').onclick=()=>$('#fileIn').click();
+$('#fileIn').onchange=ev=>{
+  const f=ev.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{try{
+    const d=JSON.parse(rd.result);
+    if(!d.races||!d.factions)throw 0;
+    D={axes:A,races:d.races.map(r=>({...r,pop:r.pop??1})),factions:d.factions.map(x=>({...x,conc:x.concentration??x.conc??0.5,bias:x.bias||{}}))};
+    sel={t:'fac',id:D.factions[0].id};cmp='';refresh();toast('불러왔습니다');
+  }catch(e){toast('파일을 읽을 수 없습니다');}};
+  rd.readAsText(f);ev.target.value='';};
+$('#btnReset').onclick=()=>{
+  if(!confirm('모든 수치를 기본값으로 되돌립니다.'))return;
+  D=defaults();sel={t:'fac',id:'fac_frontier'};cmp='';refresh();toast('기본값 복원');};
+
+let tt;function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');
+  clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('on'),1500);}
+
+/* ═══════════ 갱신 ═══════════ */
+function refresh(light){
+  drawRadar();drawMatrix();drawLists();
+  if(light){
+    const e=cur();
+    $('#hName').textContent=e.name;$('#hName').style.color=e.color;
+    AXES.forEach(a=>{const l=$(`#panAxes [data-ax="${a.id}"]`);
+      if(l){l.value=e.traits[a.id];l.previousElementSibling.querySelector('b').textContent=Math.round(e.traits[a.id]);}});
+    if(sel.t==='fac')drawSide();else drawSide();
+  }else{drawSide();drawCmpSel();}
+}
+refresh();
+</script>
+</body>
+</html>
