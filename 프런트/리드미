@@ -1,0 +1,392 @@
+# rfipconfig-fe (프런트엔드) Shipwright 빌드 파이프라인 가이드
+
+Angular/Node.js 프런트엔드 앱을 백엔드(rfipconfig-be)와 **동일한 파이프라인 인프라**로
+빌드하기 위한 전체 가이드입니다. 파일 코드 전문, 채워야 하는 값의 상세 설명,
+셋업·실행 절차를 포함합니다.
+
+> 백엔드 파이프라인 구축 과정과 트러블슈팅 이력은 메인 `README.md`를 참고하세요.
+> 이 문서는 그 위에 프런트엔드 빌드를 얹는 방법만 다룹니다.
+
+---
+
+## 목차
+
+1. [구조 개요 — 무엇을 재사용하고 무엇을 새로 만드나](#1-구조-개요)
+2. [파일 전문: rfipconfig-fe.yaml](#2-파일-전문-rfipconfig-feyaml)
+3. [채워야 하는 값 상세 설명](#3-채워야-하는-값-상세-설명)
+4. [최초 1회 셋업 절차](#4-최초-1회-셋업-절차)
+5. [빌드 실행 절차 (매번 반복)](#5-빌드-실행-절차-매번-반복)
+6. [검증 체크리스트](#6-검증-체크리스트)
+7. [자주 발생하는 문제](#7-자주-발생하는-문제)
+8. [(참고) 서빙 방식에 따른 아키텍처 선택](#8-참고-서빙-방식에-따른-아키텍처-선택)
+
+---
+
+## 1. 구조 개요
+
+### 백엔드에서 이미 만들어져 있어 재사용하는 것 (추가 작업 불필요)
+
+| 리소스 | 파일/생성 방법 | 프런트가 재사용 가능한 이유 |
+|--------|----------------|------------------------------|
+| Namespace `openshift-builds` | `namespace.yaml` | 같은 네임스페이스에서 빌드 |
+| ServiceAccount `pipeline` + RBAC | `rbac.yaml` | BuildRun이 같은 SA로 실행 |
+| SA 토큰 시크릿 `token-pipeline-secret` | `secret.yaml` | 이미 존재 |
+| push 시크릿 `pipeline-push-secret` | CLI 1회 생성 (완료됨) | 같은 네임스페이스의 시크릿이라 그대로 참조 |
+| ClusterBuildStrategy `s2i` | `s2i.yaml` | 클러스터 전역 리소스 |
+| CA configMap `hobbylobby.corp` | 기존 생성됨 | 같은 네임스페이스에 존재 |
+
+### 프런트엔드용으로 새로 만드는 것
+
+| 항목 | 방법 | 비고 |
+|------|------|------|
+| Build + BuildRun 정의 | `rfipconfig-fe.yaml` (이 문서 2장) | 유일한 신규 **파일** |
+| Git clone용 SSH 키 시크릿 | CLI 1회 생성 (4장) | 개인키 노출 방지를 위해 파일로 관리하지 않음. **프런트가 백엔드와 같은 저장소면 불필요** |
+
+---
+
+## 2. 파일 전문: rfipconfig-fe.yaml
+
+`<꺾쇠괄호>` 값은 3장의 설명을 보고 반드시 교체하세요.
+
+```yaml
+# ============================================================================
+# rfipconfig-fe.yaml — 프런트엔드(Angular/Node.js) Shipwright Build 정의
+# ============================================================================
+apiVersion: shipwright.io/v1beta1
+kind: Build
+metadata:
+  name: rfipconfig-fe-s2i-build
+  namespace: openshift-builds
+spec:
+  env:
+    # Angular 프로덕션 빌드를 실행할 npm 스크립트 이름
+    - name: NPM_RUN
+      value: '<package.json의 빌드 스크립트 이름>'   # → 3장 (1)
+
+    # 앱이 리슨할 포트
+    - name: PORT
+      value: '<포트 번호>'                            # → 3장 (2)
+
+    # 사내 quay CA 신뢰 설정 — 백엔드와 동일, 수정하지 말 것
+    - name: SSL_CERT_FILE
+      value: /etc/pki/ca-trust/extracted/trust-manager/ca-certs.pem
+
+    # (선택) 빌드 시 백엔드 API 주소 주입이 필요한 경우만 주석 해제
+    # - name: API_URL
+    #   value: '<백엔드 API 주소>'                    # → 3장 (3)
+
+  source:
+    type: Git
+    git:
+      url: '<프런트엔드 Git 저장소 SSH 주소>'          # → 3장 (4)
+      cloneSecret: '<SSH 키 시크릿 이름>'              # → 3장 (5)
+      revision: '<브랜치 이름>'                        # → 3장 (6)
+      depth: 1
+    contextDir: '<프런트엔드 앱 디렉터리>'             # → 3장 (7)
+
+  strategy:
+    # 백엔드와 동일한 s2i 전략 재사용 — 수정하지 말 것
+    name: s2i
+    kind: ClusterBuildStrategy
+
+  paramValues:
+    - name: builder-image
+      value: '<Node.js 빌더 이미지 전체 경로>'         # → 3장 (8)
+
+  output:
+    # 백엔드와 동일한 내부 레지스트리/네임스페이스, 이미지 이름만 fe
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-fe:latest
+    # 백엔드에서 만든 시크릿 재사용 — 수정하지 말 것
+    pushSecret: pipeline-push-secret
+---
+# ============================================================================
+# BuildRun — 빌드 실행 트리거
+# ⚠️ generateName을 사용하므로 oc apply가 아닌 "oc create -f"로 실행할 것
+# ============================================================================
+apiVersion: shipwright.io/v1beta1
+kind: BuildRun
+metadata:
+  generateName: rfipconfig-fe-s2i-build-
+  namespace: openshift-builds
+spec:
+  build:
+    name: rfipconfig-fe-s2i-build
+  serviceAccount: pipeline
+```
+
+---
+
+## 3. 채워야 하는 값 상세 설명
+
+### (1) `NPM_RUN` — 빌드 스크립트 이름
+
+**무엇:** s2i Node.js 빌더가 실행할 npm 스크립트.
+
+**찾는 방법:** 프런트엔드 저장소의 `package.json`을 열고 `scripts` 섹션 확인:
+
+```json
+"scripts": {
+  "build": "ng build --configuration production",
+  "build:prod": "ng build --prod",
+  "start": "ng serve"
+}
+```
+
+프로덕션 빌드를 수행하는 스크립트 이름을 넣습니다. 위 예시라면 `build` 또는 `build:prod`.
+
+```yaml
+- name: NPM_RUN
+  value: 'build'
+```
+
+### (2) `PORT` — 리슨 포트
+
+**무엇:** 컨테이너에서 앱이 리슨할 포트. 이후 Service/Route 설정과 일치해야 합니다.
+
+**찾는 방법:** 앱의 서버 진입점(예: `server.js`, `main.ts`의 listen 부분) 또는 팀 컨벤션 확인.
+Node.js 앱은 관례적으로 8080을 많이 사용합니다.
+
+```yaml
+- name: PORT
+  value: "8080"
+```
+
+### (3) `API_URL` — 백엔드 API 주소 (선택)
+
+**무엇:** 프런트가 호출할 백엔드 주소를 빌드 타임에 주입해야 하는 경우.
+
+**판단 방법:** Angular는 보통 `src/environments/environment.prod.ts`에 API 주소를 넣어
+소스에서 관리하므로 **대부분 필요 없습니다.** 팀의 환경변수 주입 방식을 쓰는 경우에만
+주석을 해제하고 값을 넣으세요. 불필요하면 항목 자체를 삭제.
+
+### (4) Git 저장소 SSH 주소
+
+**무엇:** 프런트엔드 소스 저장소.
+
+**형식:** 백엔드와 같은 사내 GitHub 패턴을 따릅니다:
+
+```
+git@hlgithub.hobbylobby.corp:<조직/팀>/<저장소이름>.git
+```
+
+**찾는 방법:** 사내 GitHub에서 프런트 저장소 → Code 버튼 → SSH 주소 복사.
+
+```yaml
+url: 'git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig-frontend.git'
+```
+
+> 프런트 코드가 백엔드와 **같은 저장소**의 다른 디렉터리에 있다면 백엔드와 동일한
+> url을 쓰고, (5)의 시크릿도 기존 것을 재사용하며, (7)의 contextDir만 다르게 지정합니다.
+
+### (5) `cloneSecret` — SSH 키 시크릿 이름
+
+**무엇:** git clone에 사용할 SSH 개인키가 담긴 시크릿.
+
+**케이스 A — 백엔드와 같은 저장소:** 기존 시크릿 재사용, 추가 작업 없음:
+
+```yaml
+cloneSecret: 'github-repo-ssh-key-rfipconfig-be'
+```
+
+**케이스 B — 다른 저장소:** deploy key는 저장소별이므로 새로 만들어야 합니다 (→ 4장 셋업 절차).
+이름은 자유이나 팀 컨벤션을 따라 짓는 것을 권장:
+
+```yaml
+cloneSecret: 'github-repo-ssh-key-rfipconfig-fe'
+```
+
+### (6) `revision` — 브랜치 이름
+
+**찾는 방법:** 저장소의 기본 브랜치 확인 (`master`인지 `main`인지 저장소마다 다름).
+
+```yaml
+revision: 'master'
+```
+
+### (7) `contextDir` — 앱 디렉터리
+
+**무엇:** 저장소 안에서 `package.json`이 위치한 디렉터리.
+
+**찾는 방법:** 저장소 루트에 `package.json`이 바로 있으면 **이 줄을 삭제**합니다.
+하위 디렉터리에 있으면 그 경로를 지정:
+
+```yaml
+contextDir: 'frontend'      # 예: <repo>/frontend/package.json인 경우
+```
+
+### (8) `builder-image` — Node.js 빌더 이미지
+
+**무엇:** s2i가 사용할 Node.js 빌더 이미지. 백엔드의 `hl-dotnet`에 해당하는
+Node.js 버전이 사내 Quay에 있어야 합니다.
+
+**찾는 방법 (셋 중 하나):**
+
+```bash
+# 방법 1: Quay 웹 UI에서 hl-images 조직의 이미지 목록 확인
+#   https://quay.hobbylobby.corp → hl-images 검색
+
+# 방법 2: CLI 검색
+podman search quay.hobbylobby.corp/hl-images/
+
+# 방법 3: 특정 이미지의 태그 목록 확인
+skopeo list-tags docker://quay.hobbylobby.corp/hl-images/<이미지이름>
+```
+
+**Node 버전 확인:** 프런트 저장소의 `package.json`에 `engines.node`가 있으면 그 버전,
+없으면 `.nvmrc` 파일이나 팀 컨벤션 확인. Angular 최신 버전은 Node 18+ 필요.
+
+```yaml
+- name: builder-image
+  value: 'quay.hobbylobby.corp/hl-images/hl-nodejs:20-rhel9-latest'   # 실제 존재 확인 후 사용
+```
+
+> ⚠️ 위 경로는 **예시**입니다. `hl-nodejs`라는 이미지가 실제로 존재하는지 반드시
+> 확인하세요. 없다면 Red Hat 공식 이미지(`registry.access.redhat.com/ubi9/nodejs-20`)를
+> 사내 Quay로 미러링하거나 이미지 관리팀에 요청해야 합니다.
+
+### 수정하지 말아야 하는 값 (백엔드 인프라와 연결됨)
+
+| 값 | 이유 |
+|----|------|
+| `namespace: openshift-builds` | 모든 공유 리소스(SA, 시크릿, configMap)가 이 NS에 있음 |
+| `SSL_CERT_FILE` 경로 | s2i 전략이 CA configMap을 이 경로에 마운트함 |
+| `strategy: s2i / ClusterBuildStrategy` | 검증된 기존 전략 재사용 |
+| `output.image`의 레지스트리·NS 부분 | push 권한과 시크릿이 이 조합으로 설정됨 |
+| `pushSecret: pipeline-push-secret` | 이미 생성·검증된 시크릿 |
+| `serviceAccount: pipeline` | RBAC이 이 SA에 부여됨 |
+
+---
+
+## 4. 최초 1회 셋업 절차
+
+### 4-1. (케이스 B만) 프런트 저장소용 SSH 키 시크릿 생성
+
+프런트가 백엔드와 **다른 저장소**인 경우에만 수행합니다.
+
+```bash
+# 1. 키 페어 생성 (이미 팀 deploy key가 있으면 그것 사용)
+ssh-keygen -t ed25519 -f ./rfipconfig-fe-deploy-key -N "" -C "shipwright-fe-build"
+
+# 2. 공개키(rfipconfig-fe-deploy-key.pub)를 사내 GitHub 프런트 저장소의
+#    Settings → Deploy keys에 등록 (read 권한이면 충분)
+
+# 3. 개인키로 시크릿 생성
+oc create secret generic github-repo-ssh-key-rfipconfig-fe \
+  --from-file=ssh-privatekey=./rfipconfig-fe-deploy-key \
+  --type=kubernetes.io/ssh-auth \
+  -n openshift-builds
+
+# 4. 로컬 키 파일 정리 (시크릿 생성 후 개인키를 로컬에 남기지 말 것)
+shred -u ./rfipconfig-fe-deploy-key
+```
+
+> 이 시크릿을 YAML 파일로 만들지 않는 이유: 개인키가 평문(base64)으로 Git에
+> 노출되기 때문. `pipeline-push-secret`과 동일한 원칙 (메인 README 2-3 참고).
+
+### 4-2. Build 정의 적용
+
+3장을 보고 `rfipconfig-fe.yaml`의 placeholder를 모두 채운 뒤:
+
+```bash
+# Build 부분만 먼저 적용 (BuildRun은 5장에서 create로 실행)
+oc apply -f rfipconfig-fe.yaml
+```
+
+> 참고: 파일에 Build와 BuildRun이 함께 있으므로 `oc apply` 시 BuildRun의
+> generateName 때문에 에러가 날 수 있습니다. 그 경우 파일을 둘로 나누거나,
+> Build 정의만 있는 부분을 적용하세요. 가장 간단한 방법은 BuildRun 부분을
+> 별도 파일(buildrun-fe.yaml)로 분리하는 것입니다.
+
+### 4-3. Build 등록 확인
+
+```bash
+oc get builds.shipwright.io rfipconfig-fe-s2i-build -n openshift-builds
+```
+
+`REGISTERED=True`가 나와야 합니다. `False`라면 REASON 컬럼과 아래 명령으로 원인 확인:
+
+```bash
+oc get builds.shipwright.io rfipconfig-fe-s2i-build -n openshift-builds \
+  -o jsonpath='{.status.message}'; echo
+```
+
+---
+
+## 5. 빌드 실행 절차 (매번 반복)
+
+```bash
+# 1. BuildRun 생성 (generateName이므로 반드시 create)
+oc create -f buildrun-fe.yaml     # 또는 rfipconfig-fe.yaml의 BuildRun 부분
+
+# 2. 상태 모니터링
+oc get buildruns.shipwright.io -n openshift-builds -w
+
+# 3. 로그 확인
+oc get pods -n openshift-builds
+oc logs -f <buildrun-pod-name> -n openshift-builds --all-containers
+
+# 4. 결과 이미지 확인
+oc get imagestream rfipconfig-fe -n openshift-builds
+```
+
+---
+
+## 6. 검증 체크리스트
+
+**셋업 검증:**
+
+- [ ] `package.json`의 scripts에 `NPM_RUN` 값과 같은 이름의 스크립트가 존재하는가
+- [ ] builder-image가 Quay에 실제 존재하는가 (`skopeo list-tags docker://<이미지>`)
+- [ ] cloneSecret 시크릿이 존재하는가 (`oc get secret <이름> -n openshift-builds`)
+- [ ] (케이스 B) 공개키가 프런트 저장소 Deploy keys에 등록되어 있는가
+- [ ] `oc get builds.shipwright.io rfipconfig-fe-s2i-build` → `REGISTERED=True`
+
+**빌드 성공 판정:**
+
+- [ ] `step-s2i-generate`에 x509 경고 없음
+- [ ] `step-buildah`에서 builder 이미지 pull이 에러 없이 진행
+- [ ] npm install / npm run 단계가 정상 완료
+- [ ] `[INFO] Pushing image ...` 이후 digest 출력되며 종료
+- [ ] `oc get buildruns.shipwright.io` → `SUCCEEDED=True`
+- [ ] `oc get imagestream rfipconfig-fe -n openshift-builds`에 이미지 존재
+
+---
+
+## 7. 자주 발생하는 문제
+
+| 증상 | 원인 후보 | 조치 |
+|------|-----------|------|
+| git clone 실패 (Permission denied) | Deploy key 미등록 / cloneSecret 오류 | 공개키가 저장소에 등록됐는지, 시크릿의 개인키가 맞는지 확인 |
+| `npm ERR! missing script` | NPM_RUN 값이 package.json scripts에 없음 | 3장 (1) 재확인 |
+| builder 이미지 pull 실패 (manifest unknown) | 이미지 이름/태그 오타 또는 미존재 | `skopeo list-tags`로 실제 태그 확인 |
+| x509 에러 | SSL_CERT_FILE 누락/오타 | 백엔드와 동일한 값인지 확인 (메인 README 2-2) |
+| push authentication required | pushSecret/권한/NS 문제 | 메인 README 2-3의 3가지 원인 점검 |
+| 빌드는 성공했지만 앱 구동 시 즉시 종료 | 프로덕션 서빙 방식 문제 | 8장 참고 — nginx 서빙 구조 필요 여부 확인 |
+| `oc get build` NotFound | 리소스 이름 충돌 | `oc get builds.shipwright.io` 사용 (메인 README 2-4) |
+
+---
+
+## 8. (참고) 서빙 방식에 따른 아키텍처 선택
+
+Node.js s2i로 빌드한 이미지는 **`npm run`으로 Node 프로세스를 띄워 서빙**하는 구조입니다.
+프런트 앱의 서빙 방식에 따라 이 구조가 맞는지 확인하세요:
+
+| 서빙 방식 | 현재 구조로 가능? | 비고 |
+|-----------|-------------------|------|
+| Angular Universal (SSR) | ✅ 가능 | Node 서버가 필요하므로 s2i nodejs가 정확히 맞음 |
+| Express 등 Node 서버로 정적 파일 서빙 | ✅ 가능 | package.json의 start 스크립트가 서버를 띄우면 됨 |
+| **nginx로 정적 파일 서빙 (일반적인 Angular 프로덕션)** | ❌ 추가 작업 필요 | 빌드 산출물(dist/)을 nginx 이미지에 넣는 chained/multi-stage 빌드 필요 |
+
+nginx 방식이 필요하면 별도의 BuildStrategy(예: Dockerfile 기반 buildah 전략 +
+multi-stage Dockerfile)를 구성해야 합니다. 팀의 배포 방식을 먼저 확인한 뒤
+필요 시 해당 전략을 추가로 설계하세요.
+
+---
+
+## 파일 요약
+
+| 파일 | 상태 | 내용 |
+|------|------|------|
+| `rfipconfig-fe.yaml` | 신규 (placeholder 채워야 함) | Build + BuildRun 정의 |
+| SSH 키 시크릿 | CLI 1회 생성 (케이스 B만) | git clone 인증 |
+| 그 외 전부 | 백엔드 것 재사용 | namespace, rbac, secret, s2i, pushSecret, CA configMap |
