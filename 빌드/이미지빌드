@@ -1,0 +1,169 @@
+# Runtime Image Build — `rfipconfig-be` (Shipwright PoC)
+
+Builds the **.NET runtime image** for `rfipconfig-be` using Builds for Red Hat
+OpenShift (Shipwright), following the same pattern proven on the builder image
+build. This is the second of two image builds required before the build
+pipeline task (Jenkins/Argo + BuildRun + Argo CD) begins.
+
+**Migration requirements implemented here:**
+
+1. Base image pulled from `quay.hobbylobby.corp` (not the legacy `hl-images` namespace)
+2. Entrypoint script extracted from the legacy base64-encoded variable into a
+   real, version-controlled file (`entrypoint.sh`)
+3. Registry credentials handled via a Kubernetes Secret (`pipeline-push-secret`),
+   never via environment variables
+
+---
+
+## Why a different strategy than the builder image
+
+The builder image build used the custom **s2i** ClusterBuildStrategy because it
+needed the `s2i-generate` step (source → Dockerfile generation). The runtime
+image has **no source to compile** — it is a base image plus an entrypoint
+script — so it uses a plain Dockerfile build via a custom **`buildah-hl`**
+ClusterBuildStrategy.
+
+The operator ships a built-in cluster-level `buildah` strategy, but it does not
+mount our internal CA, so pulls from `quay.hobbylobby.corp` would fail with
+x509 errors. `buildah-hl` is a copy of the `buildah` step from `s2i.yaml`,
+keeping the `hobbylobby.corp` CA configMap mount that `SSL_CERT_FILE` points at.
+
+---
+
+## Files
+
+| File | Kind | Purpose |
+|------|------|---------|
+| `buildah-hl.yaml` | ClusterBuildStrategy | Dockerfile build via buildah, with the internal CA configMap mounted at `/etc/pki/ca-trust/extracted/trust-manager` |
+| `rfipconfig-be-runtime.yaml` | Build | Runtime image build definition. Reuses `SSL_CERT_FILE`, `pipeline-push-secret`, push to `openshift-builds` |
+| `buildrun-runtime.yaml` | BuildRun | One-shot run trigger (`generateName`, `pipeline` SA) |
+| `Dockerfile` | — | Runtime image content (base image + entrypoint) |
+| `entrypoint.sh` | — | **To be added** — decoded from the legacy base64 variable |
+
+---
+
+## Prerequisites
+
+- Builds for Red Hat OpenShift Operator installed (`openshift-builds-operator.v1.8.1`)
+- `pipeline` ServiceAccount in `openshift-builds` with the
+  `rb-pipeline-image-builder` RoleBinding (`system:image-builder`) — already in `rbac.yaml`
+- `pipeline-push-secret` (`kubernetes.io/dockerconfigjson`) in `openshift-builds`
+- `hobbylobby.corp` CA configMap in `openshift-builds`
+- Cluster-admin access for Step 2 (ClusterBuildStrategy is cluster-scoped;
+  only cluster admins have write access to it)
+- Valid `oc` session (`oc whoami` — tokens expire ~24h)
+
+---
+
+## Steps
+
+### Step 1 — Commit the runtime image content to Git
+
+```bash
+mkdir runtime-image/
+# Add Dockerfile; set FROM to the exact runtime base image on quay.hobbylobby.corp
+
+# Extract the entrypoint script from the legacy base64 variable:
+echo "<BASE64_VALUE>" | base64 -d > runtime-image/entrypoint.sh
+```
+
+Review `entrypoint.sh` for embedded secrets **before** committing, then commit
+and push.
+
+### Step 2 — Apply the custom ClusterBuildStrategy
+
+Fill in first:
+- `steps[0].image` → copy the buildah image from the `buildah` step in `s2i.yaml`
+- Confirm the CA configMap name matches what `s2i.yaml` mounts
+
+```bash
+oc apply -f buildah-hl.yaml
+oc get clusterbuildstrategy buildah-hl
+```
+
+### Step 3 — Apply the Build
+
+Fill in first:
+- `source.git.url` + `cloneSecret` (reuse from `rfipconfig-be.yaml` if same repo)
+- `contextDir: runtime-image/`
+
+```bash
+oc apply -f rfipconfig-be-runtime.yaml
+oc get builds.shipwright.io rfipconfig-be-runtime-image -n openshift-builds
+```
+
+> Always use the fully qualified `builds.shipwright.io` — bare `oc get build`
+> resolves to the legacy `build.openshift.io` type.
+
+### Step 4 — Run the BuildRun
+
+```bash
+oc create -f buildrun-runtime.yaml    # create, NOT apply (generateName)
+oc get buildruns.shipwright.io -n openshift-builds -w
+```
+
+### Step 5 — Verify
+
+```bash
+oc get pods -n openshift-builds
+oc logs -f <buildrun-pod-name> -n openshift-builds --all-containers
+oc get istag -n openshift-builds | grep rfipconfig-be-runtime
+```
+
+**Success checklist:**
+
+- [ ] `step-buildah` log: `Trying to pull quay.hobbylobby.corp/...` proceeds with **no x509 error**
+- [ ] `[INFO] Pushing image ...` completes without `authentication required`
+- [ ] `oc get buildruns.shipwright.io` shows `SUCCEEDED=True`
+- [ ] `oc get istag -n openshift-builds` shows the `rfipconfig-be-runtime` tag
+- [ ] Status checked via **CLI, not the console BuildRun detail page**
+      (OCPBUGS-84214 UI crash still open on operator v1.8.1)
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `x509: certificate signed by unknown authority` | CA not visible to buildah | Confirm `SSL_CERT_FILE` env in the Build and the CA volume mount in `buildah-hl.yaml` |
+| `authentication required` on push | Wrong secret type / missing RBAC / nonexistent namespace | Secret must be `dockerconfigjson`; SA needs `system:image-builder`; target namespace must exist |
+| `oc get build ... not found` | CRD name collision | Use `oc get builds.shipwright.io` |
+| BuildRun pod CrashLoopBackOff | Sidecar injection into build pod | Ensure no `linkerd.io/inject` label/annotation on `openshift-builds` |
+| Console BuildRun page crashes (React #310) | OCPBUGS-84214 | Known plugin bug — verify via CLI; fixed in OCP 4.21.19+ |
+
+---
+
+## References
+
+**Red Hat — Builds for Red Hat OpenShift** (use the version dropdown to switch to 1.7):
+
+- Build strategies (buildah = Dockerfile-based, `dockerfile` in `paramValues`):
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.3/html-single/about_builds/index>
+- Configuring build strategies (custom ClusterBuildStrategy):
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.0/html/configure/configuring-build-strategies>
+- Work with Builds — creating a buildah build:
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.4/html/work_with_builds/managing-builds-1>
+- Authentication — registry push secrets, `spec.output.pushSecret`:
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.4/html/authentication/understanding-authentication-at-runtime>
+
+**Shipwright (upstream):**
+
+- Build Strategies (steps, parameters, volumes/volumeMounts):
+  <https://shipwright.io/docs/build/buildstrategies/>
+- Build (spec fields, env, volumes override):
+  <https://shipwright.io/docs/build/build/>
+- BuildRun (serviceAccount, retention, volumes):
+  <https://shipwright.io/docs/build/buildrun/>
+
+---
+
+## Notes
+
+- Push auth works identically to the builder image build: `pipeline` SA +
+  `pipeline-push-secret` + `rb-pipeline-image-builder`. No new RBAC needed
+  while output stays in `openshift-builds`.
+- If the runtime image should eventually live on quay instead of the internal
+  registry, that requires a quay repo + robot-account dockerconfigjson secret —
+  defer to the pipeline task.
+- **Next task:** build pipeline (Tekton triggers, Jenkins/Argo integration,
+  Argo CD) — tracked as a separate Jira task.
