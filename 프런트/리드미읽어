@@ -1,0 +1,44 @@
+# rfipconfig-fe — Shipwright Build (frontend)
+
+Frontend counterpart of `rfipconfig-be-s2i-build`. Same namespace (`openshift-builds`), same `pipeline` ServiceAccount, same `s2i` ClusterBuildStrategy, same `pipeline-push-secret`. Nothing new is required on the RBAC side — `rb-pipeline-image-builder` already covers pushes to the internal registry.
+
+## What you must edit (CHANGE_ME checklist)
+
+In `rfipconfig-fe.yaml`:
+
+1. `spec.env` — set `PORT` and any runtime/build env vars the frontend actually needs. `SSL_CERT_FILE` stays as-is (Quay internal CA trust).
+2. `spec.source.git.url` — the frontend repo URL. If it lives in the same `Warehouse/rfipconfig` repo, keep the backend URL and only change `contextDir`.
+3. `spec.source.git.cloneSecret` — reuse `github-repo-ssh-key-rfipconfig-be` if the same deploy key covers the repo; otherwise create the new secret (see `secret-fe-ssh-key.yaml`).
+4. `spec.source.git.revision` — branch name (`master`/`main`).
+5. `spec.source.contextDir` — the frontend source directory.
+6. `paramValues.builder-image` — S2I builder from `quay.hobbylobby.corp` (e.g. an hl Node.js builder). Must not reference the old `hl-images` namespace on the internal registry.
+7. `spec.output.image` tag — e.g. `latest`.
+
+## Apply order
+
+```bash
+# 1. (only if a separate deploy key is needed)
+oc create secret generic github-repo-ssh-key-rfipconfig-fe \
+  --namespace openshift-builds \
+  --type=kubernetes.io/ssh-auth \
+  --from-file=ssh-privatekey=<path-to-key>
+
+# 2. Build definition
+oc apply -f rfipconfig-fe.yaml
+
+# 3. Verify the Build registered (fully qualified type — plain `oc get build`
+#    resolves to the legacy build.openshift.io kind)
+oc get builds.shipwright.io -n openshift-builds
+
+# 4. Trigger a run (create, not apply — generateName is used)
+oc create -f buildrun-rfipconfig-fe.yaml
+
+# 5. Watch it
+oc get buildruns.shipwright.io -n openshift-builds -w
+```
+
+## Verification notes
+
+- Check status via CLI (`oc get buildruns.shipwright.io`), not the console — the console plugin BuildRun detail page can crash with React error #310 (OCPBUGS-84214) even when the build succeeds.
+- If the clone step fails on auth: confirm the secret type is `kubernetes.io/ssh-auth` and the deploy key is registered on the frontend repo.
+- If the pull from Quay fails on TLS: confirm the `trust-manager-ca` ConfigMap (`hobbylobby.corp`) contains the CA and `SSL_CERT_FILE` is set — the strategy already mounts it at `/etc/pki/ca-trust/extracted/trust-manager`.
