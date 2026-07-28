@@ -1,0 +1,100 @@
+# rfipconfig-fe — Shipwright Build (frontend)
+
+Frontend counterpart of `rfipconfig-be-s2i-build`. Same namespace (`openshift-builds`), same `pipeline` ServiceAccount, same `s2i` ClusterBuildStrategy, same `pipeline-push-secret`. No new RBAC needed — `rb-pipeline-image-builder` already covers pushes to the internal registry.
+
+---
+
+## 1. BE vs FE — what actually differs
+
+The two Builds share the same skeleton. Only these fields carry different values:
+
+| Field (path in Build spec) | Backend (`rfipconfig-be.yaml`) | Frontend (`rfipconfig-fe.yaml`) | Why it differs |
+|---|---|---|---|
+| `metadata.name` | `rfipconfig-be-s2i-build` | `rfipconfig-fe-s2i-build` | Separate Build resource per app |
+| `spec.env` → app vars | `DOTNET_PACK=true`, `DOTNET_STARTUP_PROJECT=Rfipconfig.Api.csproj` | .NET vars removed; Node-style vars (e.g. `NPM_RUN`, `NODE_ENV`) as needed | BE is .NET S2I, FE is a different runtime — builder-specific env |
+| `spec.env` → `PORT` | `5000` | `CHANGE_ME` (e.g. `8080`) | FE listens on its own port |
+| `spec.source.git.url` | `git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git` | `CHANGE_ME` — same repo or a separate FE repo | Depends on repo layout |
+| `spec.source.git.cloneSecret` | `github-repo-ssh-key-rfipconfig-be` | `github-repo-ssh-key-rfipconfig-fe` (or reuse the BE secret) | Separate deploy key only if FE is a separate repo |
+| `spec.source.git.revision` | `master` | `CHANGE_ME` | FE repo/branch may differ |
+| `spec.source.contextDir` | `Rfipconfig.Api` | `CHANGE_ME` (e.g. `Rfipconfig.Web`) | Different source directory |
+| `paramValues` → `builder-image` | `quay.hobbylobby.corp/hl-images/hl-dotnet:60-rhel9-latest` | `CHANGE_ME` (e.g. an hl Node.js/nginx S2I builder from Quay) | Runtime-specific builder |
+| `spec.output.image` | `.../openshift-builds/rfipconfig-be:latest` | `.../openshift-builds/rfipconfig-fe:<tag>` | Separate image repository per app |
+
+**Identical in both (do not edit):**
+
+| Field | Shared value | Reason |
+|---|---|---|
+| `metadata.namespace` | `openshift-builds` | Verified existing namespace with working RBAC |
+| `spec.env` → `SSL_CERT_FILE` | `/etc/pki/ca-trust/extracted/trust-manager/ca-certs.pem` | Quay internal-CA trust workaround |
+| `spec.source.git.depth` | `1` | Shallow clone |
+| `spec.strategy` | `s2i` / `ClusterBuildStrategy` | Shared strategy (CA volume + `registries-search` already configured) |
+| `spec.output.pushSecret` | `pipeline-push-secret` | Existing `dockerconfigjson` secret |
+| BuildRun `spec.serviceAccount` | `pipeline` | Holds `system:image-builder` via `rb-pipeline-image-builder` |
+
+---
+
+## 2. File-by-file, line-by-line edit guide
+
+### `rfipconfig-fe.yaml` — 7 required edits
+
+| # | Line | Field | What to enter | Example |
+|---|---|---|---|---|
+| 1 | **26–27** | `env` → `PORT` | Port the FE app listens on | `"8080"` |
+| 2 | **17–23** | `env` (commented block) | Uncomment/add runtime env vars the FE builder needs; delete the block if none | `NPM_RUN=build`, `NODE_ENV=production` |
+| 3 | **35** | `source.git.url` | FE repo SSH URL. Same repo as BE → copy the BE URL and only change `contextDir` | `git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git` |
+| 4 | **38** | `source.git.cloneSecret` | Secret name for the deploy key. Same repo as BE → change to `github-repo-ssh-key-rfipconfig-be` and skip `secret-fe-ssh-key.yaml` | `github-repo-ssh-key-rfipconfig-fe` |
+| 5 | **41** | `source.git.revision` | Branch to build | `master` |
+| 6 | **43** | `source.contextDir` | Directory of FE source inside the repo | `Rfipconfig.Web` |
+| 7 | **50–51** | `paramValues` → `builder-image` | S2I builder image from `quay.hobbylobby.corp` (not the old `hl-images` internal-registry namespace) | `quay.hobbylobby.corp/hl-images/hl-nodejs:18-rhel9-latest` |
+| 8 | **59** | `output.image` (tag only) | Replace `:CHANGE_ME` with the tag; keep the path | `:latest` |
+
+Optional: **lines 54–55** — uncomment `storage-driver: overlay` only if you want to override the strategy default (`vfs`).
+
+Keep unchanged: line 12 (`name`), line 13 (`namespace`), lines 28–29 (`SSL_CERT_FILE`), lines 45–47 (`strategy`), line 61 (`pushSecret`).
+
+### `buildrun-rfipconfig-fe.yaml` — no edits required
+
+| Line | Field | Note |
+|---|---|---|
+| 12 | `generateName: rfipconfig-fe-s2i-build-` | Each run gets a unique suffix → must use `oc create`, **not** `oc apply` |
+| 16 | `build.name` | Must match `metadata.name` in `rfipconfig-fe.yaml` line 12 — only change if you rename the Build |
+| 18 | `serviceAccount: pipeline` | Keep — existing SA with image-builder RBAC |
+
+### `secret-fe-ssh-key.yaml` — conditional (only for a separate FE deploy key)
+
+| Line | Field | What to do |
+|---|---|---|
+| 12 | `--from-file=ssh-privatekey=CHANGE_ME` | Preferred path: run the `oc create secret` command in the header with your key file path — the key never touches Git |
+| 24 | `stringData.ssh-privatekey` | Only if applying the manifest directly: paste the private key at apply time; never commit it |
+
+Skip this file entirely if the FE lives in the same repo as the BE (edit #4 above → reuse the BE secret).
+
+---
+
+## 3. Apply order
+
+```bash
+# 1. (only if a separate deploy key is needed)
+oc create secret generic github-repo-ssh-key-rfipconfig-fe \
+  --namespace openshift-builds \
+  --type=kubernetes.io/ssh-auth \
+  --from-file=ssh-privatekey=<path-to-key>
+
+# 2. Build definition
+oc apply -f rfipconfig-fe.yaml
+
+# 3. Verify (fully qualified type — plain `oc get build` resolves to legacy build.openshift.io)
+oc get builds.shipwright.io -n openshift-builds
+
+# 4. Trigger a run (create, not apply — generateName)
+oc create -f buildrun-rfipconfig-fe.yaml
+
+# 5. Watch
+oc get buildruns.shipwright.io -n openshift-builds -w
+```
+
+## 4. Verification notes
+
+- Check status via CLI (`oc get buildruns.shipwright.io`), not the console — the console plugin BuildRun detail page can crash with React error #310 (OCPBUGS-84214) even when the build succeeds.
+- Clone step auth failure → confirm secret type is `kubernetes.io/ssh-auth` and the deploy key is registered on the FE repo.
+- Quay pull TLS failure → confirm the `trust-manager-ca` ConfigMap (`hobbylobby.corp`) contains the CA; `SSL_CERT_FILE` is already set and the strategy mounts the CA at `/etc/pki/ca-trust/extracted/trust-manager`.
