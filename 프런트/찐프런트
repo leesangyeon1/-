@@ -1,0 +1,61 @@
+# =============================================================================
+# rfipconfig-fe : Shipwright Build (frontend)
+# Mirrors the structure of rfipconfig-be-s2i-build.
+#
+# All values marked CHANGE_ME are environment/app specific and MUST be edited
+# before applying. Everything else is inherited from the working backend setup
+# (same namespace, service account, push secret, CA trust, strategy).
+# =============================================================================
+apiVersion: shipwright.io/v1beta1
+kind: Build
+metadata:
+  name: rfipconfig-fe-s2i-build
+  namespace: openshift-builds
+spec:
+  env:
+    # ---------------------------------------------------------------------
+    # CHANGE_ME: set env vars appropriate to the frontend runtime.
+    # Examples below are commented out — uncomment/edit only what applies.
+    # For a Node.js S2I build:
+    #   - name: NPM_RUN
+    #     value: 'build'
+    #   - name: NODE_ENV
+    #     value: 'production'
+    # For a static build served by nginx, env may not be needed at all.
+    # ---------------------------------------------------------------------
+    - name: PORT
+      value: "CHANGE_ME"            # e.g. "8080" — port the frontend listens on
+    - name: SSL_CERT_FILE
+      value: /etc/pki/ca-trust/extracted/trust-manager/ca-certs.pem
+      # ^ keep as-is: required for pulling from quay.hobbylobby.corp
+      #   (private internal CA; Go-based tooling reads SSL_CERT_FILE directly)
+  source:
+    type: Git
+    git:
+      url: CHANGE_ME               # e.g. git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git
+                                   #   (same repo, different contextDir) OR a separate
+                                   #   frontend repo — confirm with the repo owner
+      cloneSecret: github-repo-ssh-key-rfipconfig-fe   # CHANGE_ME if you reuse the
+                                   # backend key secret; otherwise create this secret
+                                   # (template: secret-fe-ssh-key.yaml)
+      revision: CHANGE_ME          # e.g. master / main
+      depth: 1
+    contextDir: CHANGE_ME          # e.g. 'Rfipconfig.Web' — directory containing the
+                                   # frontend source inside the repo
+  strategy:
+    name: s2i
+    kind: ClusterBuildStrategy     # reuses the existing s2i ClusterBuildStrategy
+                                   # (CA trust volume + registries-search already set)
+  paramValues:
+    - name: builder-image
+      value: CHANGE_ME             # e.g. quay.hobbylobby.corp/hl-images/hl-nodejs:18-rhel9-latest
+                                   # Must be an S2I-capable builder image in Quay,
+                                   # per the migration rule (no hl-images namespace)
+    # - name: storage-driver
+    #   value: "overlay"           # optional; strategy default is vfs
+  output:
+    # Same push target pattern as the backend: internal registry, openshift-builds
+    # namespace (namespace verified to exist; pipeline SA has system:image-builder).
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-fe:CHANGE_ME
+    # ^ CHANGE_ME = tag, e.g. latest
+    pushSecret: pipeline-push-secret   # existing dockerconfigjson secret — reused as-is
