@@ -1,0 +1,211 @@
+# check_ARGO_sync.py — Scope Filtering Flags
+
+**Audience:** Whoever maintains the check and the Icinga config (Lee, Steven)
+**Applies to:** `check_ARGO_sync.py` with `--cluster` / `--project` / `--dest-namespace` / `--annotation`
+
+---
+
+## 1. What each flag matches
+
+The flags do **exact string match** (no substring, no wildcard) against these JSON fields:
+
+| Flag | JSON field | Value from our actual API sample |
+|---|---|---|
+| `--cluster` | `spec.destination.server` **or** `spec.destination.name` | `https://kubernetes.default.svc` (in-cluster) |
+| `--project` | `spec.project` | `master-app`, `snd-linuxadmin` |
+| `--dest-namespace` | `spec.destination.namespace` | `openshift-gitops`, `snd-linuxadmin-hl-nginx-canary` |
+| `--annotation` | `metadata.annotations` (KEY=VALUE) | (none in the sample) |
+
+This is why the earlier attempts returned zero matches:
+
+```
+--project snd        ->  no app has project exactly "snd"      (they are "snd-linuxadmin", ...)
+--cluster os4snd     ->  no app has cluster exactly "os4snd"   (it is "https://kubernetes.default.svc")
+```
+
+`snd` is a *prefix* of the real values, and the filter does not do prefix matching.
+
+Working commands against the sample data:
+
+```bash
+python3 check_ARGO_sync.py -d '<context>' --project snd-linuxadmin
+python3 check_ARGO_sync.py -d '<context>' --project master-app
+python3 check_ARGO_sync.py -d '<context>' --cluster https://kubernetes.default.svc
+python3 check_ARGO_sync.py -d '<context>' --dest-namespace openshift-gitops
+```
+
+> **Note on `--cluster`:** apps deployed to the hub itself always use the
+> in-cluster URL `https://kubernetes.default.svc`. Apps targeting spoke
+> clusters carry that cluster's full API URL (e.g.
+> `https://api.os4snd.hobbylobby.corp:6443`) or the name the cluster was
+> registered under in ArgoCD (`spec.destination.name`). The flag accepts
+> either form.
+
+---
+
+## 2. Do I have to specify every value one by one?
+
+No. Three mechanisms, from ad hoc to fully variable-driven:
+
+**a. Repeatable flags.** Every filter flag can be given multiple times; values within one flag are OR-ed:
+
+```bash
+python3 check_ARGO_sync.py -d '<context>' \
+    --project snd-linuxadmin --project master-app
+```
+
+**b. Discover the values instead of guessing them (§3).** One command lists every distinct value that currently exists — copy from there.
+
+**c. Icinga custom variables (§4).** This is the real answer to "don't hardcode." The values live in **one place** (host vars), Icinga expands them into repeated flags automatically, and adding/removing a project or cluster is a one-line vars edit — no script change, no CheckCommand change.
+
+---
+
+## 3. Discovering current values (nothing hardcoded)
+
+Run these whenever you need the current list. They read live from the API, so they stay correct as projects/clusters/namespaces are added, deleted, or renamed.
+
+**Step 1 — set the context once:**
+
+```bash
+CTX='default/api-os4hub-hobbylobby-corp:6443/system:serviceaccount:default:svcicinga'
+```
+
+**Step 2 — list distinct projects:**
+
+```bash
+oc --context "$CTX" get applications.argoproj.io -n openshift-gitops -o json \
+  | jq -r '.items[].spec.project' | sort | uniq -c | sort -rn
+```
+
+**Step 3 — list distinct clusters (name or server URL, whichever is set):**
+
+```bash
+oc --context "$CTX" get applications.argoproj.io -n openshift-gitops -o json \
+  | jq -r '.items[].spec.destination | .name // .server' | sort | uniq -c | sort -rn
+```
+
+**Step 4 — list distinct destination namespaces:**
+
+```bash
+oc --context "$CTX" get applications.argoproj.io -n openshift-gitops -o json \
+  | jq -r '.items[].spec.destination.namespace' | sort | uniq -c | sort -rn
+```
+
+**No jq available?** One jsonpath call shows all three columns:
+
+```bash
+oc --context "$CTX" get applications.argoproj.io -n openshift-gitops \
+  -o jsonpath='{range .items[*]}{.spec.project}{"\t"}{.spec.destination.server}{"\t"}{.spec.destination.namespace}{"\n"}{end}' \
+  | sort | uniq -c | sort -rn
+```
+
+**Step 5 — verify a value before wiring it into Icinga:**
+
+```bash
+python3 check_ARGO_sync.py -d "$CTX" --project <value-from-step-2> -v
+```
+
+The `-v` output prints `N/1603 applications matched the filter`, confirming the value is live.
+
+---
+
+## 4. Icinga configuration — values as variables, not hardcoded
+
+The flag values belong in **host custom variables**. The script and the CheckCommand never contain a project or cluster name.
+
+**Step 1 — CheckCommand (define once, never edit again):**
+
+```
+object CheckCommand "check_argo_sync" {
+  command = [ PluginDir + "/check_ARGO_sync.py" ]
+
+  arguments = {
+    "-d"               = { value = "$argo_context$" }
+    "--cluster"        = { value = "$argo_cluster$"    repeat_key = true }
+    "--project"        = { value = "$argo_project$"    repeat_key = true }
+    "--dest-namespace" = { value = "$argo_dest_ns$"    repeat_key = true }
+    "--annotation"     = { value = "$argo_annotation$" repeat_key = true }
+  }
+}
+```
+
+`repeat_key = true` makes an **array** custom var expand into repeated flags —
+`vars.argo_project = [ "a", "b" ]` becomes `--project a --project b`. That is
+the Icinga-side equivalent of the script's `action="append"`.
+
+**Step 2 — put the scope definitions in host vars (the ONLY place values live):**
+
+```
+object Host "argocd-hub" {
+  check_command = "hostalive"
+
+  vars.argo_context = "default/api-os4hub-hobbylobby-corp:6443/system:serviceaccount:default:svcicinga"
+
+  // one entry per Icinga service you want; edit THIS block to add/remove scopes
+  vars.argo_scopes["snd-linuxadmin"] = {
+    argo_project = [ "snd-linuxadmin" ]
+  }
+  vars.argo_scopes["master-app"] = {
+    argo_project = [ "master-app" ]
+  }
+  vars.argo_scopes["in-cluster"] = {
+    argo_cluster = [ "https://kubernetes.default.svc" ]
+  }
+}
+```
+
+**Step 3 — generate the services with `apply for` (define once, never edit again):**
+
+```
+apply Service "argo-sync-" for (scope => config in host.vars.argo_scopes) {
+  check_command = "check_argo_sync"
+  vars.argo_context = host.vars.argo_context
+  vars += config
+
+  assign where host.vars.argo_scopes
+}
+```
+
+This produces services `argo-sync-snd-linuxadmin`, `argo-sync-master-app`,
+`argo-sync-in-cluster` — each with its own state, notifications, and perfdata
+stream.
+
+**Maintenance workflow when projects/clusters change:**
+
+1. Run the discovery commands in §3 to see what exists now
+2. Add/remove/rename entries in the `vars.argo_scopes` block — one place, a few lines
+3. `icinga2 daemon -C && systemctl reload icinga2`
+
+Nothing else changes. The script, the CheckCommand, and the `apply for` rule are all value-free.
+
+---
+
+## 5. How flags combine
+
+| Combination | Semantics |
+|---|---|
+| Same flag repeated (`--project a --project b`) | OR — matches either |
+| Different flags together (`--project a --cluster x`) | AND — must match both |
+| Flag not given | No filter on that field |
+| `--annotation k1=v1 --annotation k2=v2` | AND — both annotations required |
+
+---
+
+## 6. Troubleshooting zero matches
+
+The UNKNOWN message distinguishes the two failure modes:
+
+| Message | Meaning | Action |
+|---|---|---|
+| `Failed to retrieve ArgoCD applications` | oc returned nothing — ArgoCD/auth problem | Check context, kubeconfig, service account |
+| `No applications matched filter (...) - N exist unfiltered` | ArgoCD is fine; the filter value is wrong | Re-run §3 discovery, copy the exact value |
+
+Remember: exact match. `snd` ≠ `snd-linuxadmin`. When in doubt, copy-paste from the discovery output rather than typing.
+
+---
+
+## 7. Known limitations
+
+1. **Exact match only.** Selecting "everything snd-*" requires listing each snd project explicitly (or adding a prefix/regex mode to the script — not currently implemented; ask if wanted).
+2. **ApplicationSets are filtered implicitly** via their parent Application, since the `status.resources[]` stubs carry no spec of their own. An AppSet appears in the result iff its parent Application passed the filter.
+3. **Small scopes are more sensitive.** The >20% CRITICAL threshold applies to the filtered population — with 4 apps in scope, one OutOfSync app is 25% and goes straight to CRITICAL.
