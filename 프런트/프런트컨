@@ -1,0 +1,17 @@
+# =============================================================================
+# rfipconfig-fe : BuildRun
+# Trigger a run of the frontend Build. Uses the same 'pipeline' SA that already
+# holds rb-pipeline-image-builder (system:image-builder) in openshift-builds.
+#
+# Tip: use `metadata.generateName` instead of `name` if you want each run to get
+# a unique name automatically (create with `oc create -f`, not `oc apply`).
+# =============================================================================
+apiVersion: shipwright.io/v1beta1
+kind: BuildRun
+metadata:
+  generateName: rfipconfig-fe-s2i-build-
+  namespace: openshift-builds
+spec:
+  build:
+    name: rfipconfig-fe-s2i-build
+  serviceAccount: pipeline
