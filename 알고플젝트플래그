@@ -1,0 +1,299 @@
+#!/usr/bin/python
+#  check_ARGO_sync.py
+"""
+Script for  ArgoCD application sync status
+
+This script will query the ArgoCD API, determine the sync status of every application. 
+
+- Total applications
+- Synced applications 
+- OutOfSync applications
+- Unknown applications
+
+- Add KUBECONFIG_PATH for authentication 
+
+~ Sangyeon Lee (June 14)
+
+- Modified the script with proper Icinga output format  
+~ Sangyeon Lee (June 29)
+
+- Added scope filtering flags (--project)
+
+"""
+
+from __future__ import annotations
+
+import argparse, json, os, shutil, subprocess, sys
+
+from collections import defaultdict
+
+# --- Defalut Value ---
+OC_BIN = "oc"                           
+RESOURCE_NAMESPACE = "openshift-gitops"  
+KUBECONFIG_PATH = "/var/spool/icinga2/.kube/config"      
+CTX_NAMESPACE = "openshift-gitops"
+CTX_APIENDPOINT = "api-os4snd-hobbylobby-corp:6443"
+
+# --- State management ---
+exit_code = 0
+exit_status = ["OK", "WARNING", "CRITICAL", "UNKNOWN"]
+exit_message = "All ArgoCD applications are Synced"
+
+# --- Performance output status mapping --- 
+# Sync status is maaped to numeric value for the performance data: 
+# Synced -> 0, OutOfSync -> 1, Unknown -> 2
+STATUS_NUM = {"Synced": 0, "OutOfSync": 1, "Unknown": 2}
+
+
+# --- General check helpers ---
+def exit_check(exit_code: int, exit_message: str, metric_data: None | list[str] = None) -> None:
+    """Exit check with Icinga compliant message and code."""
+    output = f"{exit_status[exit_code]} - {exit_message}"
+    if metric_data:
+        output += f" | {' '.join(metric_data)}"
+    print(output)
+    sys.exit(exit_code)
+
+
+def map(status: str | None) -> str:
+    """Map any sync status onto Synced / OutOfSync / Unknown."""
+    return status if status in ("Synced", "OutOfSync") else "Unknown"
+
+
+def matches(item: dict, args) -> bool:
+    """Return True if the Application passes the --project filter (exact match).
+    Flag left unset does not filter."""
+    spec = item.get("spec") or {}
+
+    if args.project and spec.get("project") not in args.project:
+        return False
+    return True
+
+# --- Arguments ---
+parser = argparse.ArgumentParser(description="Check ArgoCD application sync status")
+parser.add_argument(
+    "-d", "--context", help="Openshift context", default=None,
+)
+parser.add_argument(
+    "-v", "--verbose", action="count", default=0,
+    help="-v lists every app/appsets and its staus; -vv prints the raw API response",
+)
+# Command line arguments
+parser.add_argument("-t", "--show-token", action="store_true", help="Print the oc token)")
+parser.add_argument("-s", "--show-synced", action="store_true", help="List Synced entries")
+parser.add_argument("-o", "--show-outofsync", action="store_true", help="List OutOfSync entries")
+parser.add_argument("-u", "--show-unknown", action="store_true",help="List Unknown entries")
+parser.add_argument("--summary", action="store_true", help="Print the per-kind count summary")
+# Scope filtering flag (repeatable, client-side; default None = no filter)
+parser.add_argument("--project", action="append", default=None,
+                    help="AppProject name, exact match (repeatable)")
+args = parser.parse_args()
+verbosity: int = args.verbose
+show_token: bool = args.show_token
+show_synced: bool = args.show_synced
+show_outofsync: bool = args.show_outofsync
+show_unknown: bool = args.show_unknown
+show_summary: bool = args.summary
+
+# --- Fetch data ---
+os.environ["KUBECONFIG"] = KUBECONFIG_PATH
+
+# --- OC command resolution ---
+oc_cmd_path = shutil.which(OC_BIN)
+if not oc_cmd_path:
+    exit_check(3, f"Can't locate '{OC_BIN}' executable")
+
+if args.context:
+    context = args.context
+else:
+    try:
+        oc_id = subprocess.run(
+            [oc_cmd_path, "whoami"], check=True, capture_output=True, text=True
+        ).stdout.strip()
+    except subprocess.CalledProcessError as e:
+        exit_check(3, f"oc whoami failed: {e.stderr.strip()}")
+    except FileNotFoundError:
+        exit_check(3, f"'{OC_BIN}' command not found")
+    context = f"/{CTX_NAMESPACE}/{CTX_APIENDPOINT}/{oc_id}"
+
+
+base_oc = [oc_cmd_path, "--context", context]
+
+# oc command convert
+# oc --context <context> get applications.argoproj.io -n <ns> -o json
+oc_cmd = base_oc + ["get", "applications.argoproj.io", "-n", RESOURCE_NAMESPACE, "-o", "json"]
+
+if verbosity >= 1:
+    print(f"[DEBUG]: context: {context}")
+    print(f"[DEBUG]: running: {' '.join(oc_cmd)}")
+
+# Optional: show the token oc if needed
+if show_token:
+    try:
+        tok = subprocess.run(
+            base_oc + ["whoami", "-t"], check=True, capture_output=True, text=True
+        ).stdout.strip()
+        print(f"[DEBUG]: Token: {tok}")
+    except Exception as e:
+        print(f"[DEBUG]: could not retrieve token: {e}")
+
+try:
+    proc = subprocess.run(oc_cmd, check=True, capture_output=True, text=True)
+except subprocess.CalledProcessError as e:
+    exit_check(3, f"oc command failed: {e.stderr.strip()}")
+except FileNotFoundError:
+    exit_check(3, f"'{OC_BIN}' command not found")
+
+if verbosity >= 2:
+    print("[DEBUG]: Raw oc output:")
+    print(proc.stdout)
+
+# Check Json format 
+try:
+    api_data = json.loads(proc.stdout)
+except json.JSONDecodeError as e:
+    exit_check(3, f"Failed to parse oc output as JSON: {e}")
+
+raw_items = api_data.get("items") or []
+
+# --- Scope filtering ---
+# Applied BEFORE any counting so the exit code reflects the filtered scope.
+# ApplicationSets are filtered implicitly: they are only collected from the
+# status.resources[] of Applications that passed the filter.
+items = [item for item in raw_items if matches(item, args)]
+
+filters_active = bool(args.project)
+if verbosity >= 1 and filters_active:
+    print(f"[DEBUG]: filters: project={args.project}")
+    print(f"[DEBUG]: {len(items)}/{len(raw_items)} applications matched the filter")
+
+# --- Collect entries ---
+# applications  : one entry per top-level Application item
+# applicationsets: purged entries from every Application's status.resources[]
+   
+app_entries: list[tuple[str, str]] = []          
+appset_entries: dict[tuple[str, str], str] = {}  
+
+for item in items:
+    metadata = item.get("metadata") or {}
+    name = metadata.get("name", "<unnamed>")
+    status_block = item.get("status") or {}
+    sync_block = status_block.get("sync") or {}
+    sync_status = map(sync_block.get("status"))
+    app_entries.append((name, sync_status))
+
+    for res in status_block.get("resources") or []:
+        if res.get("kind") == "ApplicationSet":
+            rkey = (res.get("namespace"), res.get("name", "<unnamed>"))
+            appset_entries[rkey] = map(res.get("status"))
+
+
+# --- Status counts ---
+def tally(statuses: list[str]) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for s in statuses:
+        counts[s] += 1
+    return counts
+
+
+app_statuses = [s for _, s in app_entries]
+appset_statuses = list(appset_entries.values())
+app_t = tally(app_statuses)
+appset_t = tally(appset_statuses)
+
+app_total = len(app_statuses)
+appset_total = len(appset_statuses)
+total = app_total + appset_total
+
+synced = app_t["Synced"] + appset_t["Synced"]
+outofsync = app_t["OutOfSync"] + appset_t["OutOfSync"]
+unknown = app_t["Unknown"] + appset_t["Unknown"]
+
+app_outofsync = app_t["OutOfSync"]
+app_unknown = app_t["Unknown"]
+appset_outofsync = appset_t["OutOfSync"]
+appset_unknown = appset_t["Unknown"]
+not_synced = outofsync + unknown
+
+synced_labels: list[str] = []
+outofsync_labels: list[str] = []
+unknown_labels: list[str] = []
+unsynced_labels: list[str] = []  
+
+
+def collect(kind: str, name: str, status: str) -> None:
+    label = f"{kind}:{name}"
+    if status == "Synced":
+        synced_labels.append(label)
+    else:
+        unsynced_labels.append(f"{label}({status})")
+    if status == "OutOfSync":
+        outofsync_labels.append(label)
+    elif status == "Unknown":
+        unknown_labels.append(label)
+
+
+for name, status in app_entries:
+    collect("application", name, status)
+for (_, name), status in appset_entries.items():
+    collect("applicationset", name, status)
+
+if verbosity >= 1:
+    for name, status in app_entries:
+        print(f"[DEBUG]: application:{name} -> {status}")
+    for (_, name), status in appset_entries.items():
+        print(f"[DEBUG]: applicationset:{name} -> {status}")
+
+# --- Metric data ---
+metric_data: list[str] =[]
+for name, status in app_entries:
+    metric_data.append(f"{name}={STATUS_NUM[status]}")
+for (_, name), status in appset_entries.items():
+    metric_data.append(f"{name}-appset={STATUS_NUM[status]}")
+
+if verbosity >= 1:
+    print("[DEBUG]: performance data status mapping: Synced=0, OutOfSync=1. Unkonwn=2")
+    for m in metric_data:
+        print(f"[DEBUG]: performance data: {m}")
+
+# --- Additional output ---
+if show_synced:
+    print(f"[INFO]: Synced ({synced}): {', '.join(synced_labels) or '-'}")
+if show_outofsync:
+    print(f"[INFO]: OutOfSync ({outofsync}): {', '.join(outofsync_labels) or '-'}")
+if show_unknown:
+    print(f"[INFO]: Unknown ({unknown}): {', '.join(unknown_labels) or '-'}")
+if show_summary:
+    print(f"[INFO]: applications Synced={app_t['Synced']} OutOfSync={app_t['OutOfSync']} Unknown={app_t['Unknown']} (total {app_total})")
+    print(f"[INFO]: applicationsets Synced={appset_t['Synced']} OutOfSync={appset_t['OutOfSync']} Unknown={appset_t['Unknown']} (total {appset_total})")
+
+# --- Exit Logic ---
+# UNKNOWN  : no apps/appsets found at all, OR the filter matched nothing
+# OK       : every app/appset is Synced
+# CRITICAL : more than 20% of apps/appsets are not synced
+# WARNING  : 1 or more apps/appsets are not synced (but <= 20%)
+if total == 0:
+    exit_code = 3
+    if not raw_items:
+        # nothing came back at all -> ArgoCD itself is the problem
+        exit_message = "Failed to retrieve ArgoCD applications"
+    else:
+        # apps exist but none matched -> likely a filter typo / wrong scope
+        exit_message = (
+            f"No applications matched filter (project={args.project}) "
+            f"- {len(raw_items)} exist unfiltered"
+        )
+elif not_synced == 0:
+    exit_code = 0
+    exit_message = f"All {total} synced ({app_total} applications, {appset_total} applicationsets)"
+else:
+    exit_message = (
+        f"Total: {outofsync}/{total} OutOfSync and {unknown}/{total} Unknown - "
+        f"Applications: {app_outofsync}/{app_total} OutOfSync and {app_unknown}/{app_total} Unknown - "
+        f"Applicationsets: {appset_outofsync}/{appset_total} OutOfSync and {appset_unknown}/{appset_total} Unknown - "
+        f"{', '.join(unsynced_labels)}"
+    )
+    # More than 20% not synced -> CRITICAL, otherwise (>= 1 not synced) WARNING
+    exit_code = 2 if not_synced > total * 0.2 else 1
+
+exit_check(exit_code, exit_message, metric_data=metric_data)
