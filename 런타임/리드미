@@ -1,0 +1,145 @@
+# BuildConfig → Shipwright Conversion — `rfipconfig-be` Runtime Image
+
+Converts the legacy chained BuildConfig pair into two Shipwright Builds. The
+S2I (builder) Build already works; this adds the **runtime Build** that
+produces the final deployable `rfipconfig-be` image.
+
+Placeholder convention: every value that must not be hardcoded is marked
+**`<need to be filled - description>`** in the files.
+
+---
+
+## 1. Conversion mechanism — element-by-element mapping
+
+Legacy BuildConfig #2 (`rfipconfig-be-#{JENKINS_TAG}#`, Docker strategy) → Shipwright:
+
+| Legacy element | Legacy value | Shipwright equivalent | Where |
+|---|---|---|---|
+| `source.dockerfile` (inline) | 14-line inline dockerfile | Real `Dockerfile` in Git | `Dockerfile` (repo, Step 1) |
+| `source.images` (chained image input) | `from: rfipconfig-be-builder:#{IMAGE_TAG}#`, `paths: /opt/app-root/ → .` | Multi-stage build: `ARG BUILDER_IMAGE` + `FROM ${BUILDER_IMAGE} AS builder` + `COPY --from=builder /opt/app-root/app.tar.gz .` | `Dockerfile` + `paramValues.builder-image` |
+| Inline base64 entrypoint (`RUN echo -n '<b64>' \| base64 -d`) | decoded to `/tmp/entrypoint.sh` | Real `entrypoint.sh` in Git + `COPY entrypoint.sh /tmp/entrypoint.sh` | `entrypoint.sh` (repo, Step 1) |
+| `RUN yum install unixODBC` / `RUN curl … ibm-iaccess … rpm -i` | package installs at build time | **Intentionally omitted for this case** (per decision). If ever needed again, they belong in the base image, not the app build | — |
+| `strategy.dockerStrategy.noCache: true` | | `--no-cache` flag (strategy param `no-cache`, default `true`) | `buildah-hl.yaml` |
+| `strategy.dockerStrategy.forcePull: true` | | `--pull=always` flag (strategy param `force-pull`, default `true`) | `buildah-hl.yaml` |
+| `strategy.dockerStrategy.imageOptimizationPolicy: SkipLayers` | | No direct equivalent; nearest is buildah `--squash` (not enabled — evaluate later) | — |
+| `output.to ImageStreamTag rfipconfig-be:#{IMAGE_TAG}#` | | `output.image: image-registry…/openshift-builds/rfipconfig-be:<tag>` — pushing to the internal registry creates the imagestreamtag automatically; no ImageStream object needed | `rfipconfig-be.yaml` |
+| `sourceSecret` (ssh-auth) | `github-repo-ssh-key-rfipconfig-…` | `source.git.cloneSecret` (already exists in `secret.yaml`) | `rfipconfig-be.yaml` |
+| `triggers: ConfigChange / ImageChange` | | **No Shipwright equivalent.** Manual `BuildRun` for the PoC; Tekton Triggers + Pipeline chaining replace this in the pipeline task | `buildrun-runtime.yaml` |
+| `runPolicy: Serial`, build history limits | | Sequential BuildRuns are the pipeline's job; retention via `BuildRun.spec.retention` (deferred) | — |
+| `#{JENKINS_TAG}#` name suffixes | Jenkins templating | `<need to be filled>` markers; parameterization moves to the pipeline task | all files |
+| ImageStream objects (2) | | Not needed (see output row) | — |
+
+**How the chained build works now:** the S2I Build (with `DOTNET_PACK=true`)
+produces `/opt/app-root/app.tar.gz` inside the builder image and pushes it as
+`rfipconfig-be-builder:<tag>`. The runtime Build passes that image reference as
+`--build-arg BUILDER_IMAGE=…`; buildah pulls it as stage 1 (same registry
+auth/TLS path as the already-working push), copies out `app.tar.gz`, and layers
+it onto the clean `hl-dotnet` base — same result as the legacy
+`source.images` + `COPY app-root/app.tar.gz .`, but standard Dockerfile
+mechanics with no OpenShift-specific image-input machinery.
+
+---
+
+## 2. Files
+
+| File | Kind | `<need to be filled>` fields |
+|---|---|---|
+| `rfipconfig-be.yaml` | 2× Build | `revision` ×2 · S2I output tag · runtime `contextDir` · `builder-image` tag · runtime output tag |
+| `buildah-hl.yaml` | ClusterBuildStrategy | `steps[0].image` (copy from `s2i.yaml` buildah step) · CA configMap name |
+| `Dockerfile` | repo file | `ARG BUILDER_IMAGE` default · repo path to commit it to |
+| `entrypoint.sh` | repo file | none (content fixed; deploy-time env vars documented in header) |
+| `buildrun-runtime.yaml` | BuildRun | none |
+
+**⚠ Naming change:** the S2I output is renamed `rfipconfig-be` →
+`rfipconfig-be-builder` so the runtime image takes the final `rfipconfig-be`
+name (what Argo CD deploys, matching legacy). The S2I BuildRun must be re-run
+once after applying, before the first runtime BuildRun.
+
+---
+
+## 3. Build order & instructions
+
+### Step 1 — Commit runtime files to Git
+```bash
+mkdir -p <need to be filled - e.g. runtime/>
+cp Dockerfile entrypoint.sh <runtime-dir>/
+git add <runtime-dir>/ && git commit -m "Runtime image: Dockerfile + extracted entrypoint" && git push
+```
+`entrypoint.sh` needs these env vars **at deploy time** (Deployment, not build):
+`AUTH_PASSWORD`, `APP_DLL`, `ASPNETCORE_ENVIRONMENT` — plus the pfx mounted at
+`/etc/pki/tls/private/auth-clientSecrets.pfx`.
+
+### Step 2 — Apply the strategy (cluster-admin)
+```bash
+oc apply -f buildah-hl.yaml
+oc get clusterbuildstrategy buildah-hl
+```
+
+### Step 3 — Apply both Builds
+```bash
+oc apply -f rfipconfig-be.yaml
+oc get builds.shipwright.io -n openshift-builds   # both must show Succeeded (registered)
+```
+
+### Step 4 — Re-run the S2I BuildRun (new output name)
+```bash
+oc create -f buidlrun.yaml      # existing S2I buildrun
+oc get buildruns.shipwright.io -n openshift-builds -w
+# wait for SUCCEEDED=True, confirm:
+oc get istag -n openshift-builds | grep rfipconfig-be-builder
+```
+
+### Step 5 — Run the runtime BuildRun
+```bash
+oc create -f buildrun-runtime.yaml     # create, NOT apply (generateName)
+oc get buildruns.shipwright.io -n openshift-builds -w
+oc logs -f <pod> -n openshift-builds --all-containers
+```
+
+### Step 6 — Verify
+- [ ] Stage-1 pull of `rfipconfig-be-builder` from internal registry OK (no x509 / auth error)
+- [ ] Base pull from `quay.hobbylobby.corp` OK (no x509)
+- [ ] Push OK, BuildRun `SUCCEEDED=True`
+- [ ] `oc get istag -n openshift-builds | grep 'rfipconfig-be:'` shows the final image
+- [ ] Smoke test: `oc run` / deploy the image; container starts `/tmp/entrypoint.sh` (needs the 3 env vars + pfx mount)
+- [ ] CLI only — console BuildRun page still crashes (OCPBUGS-84214, v1.8.1)
+
+Dependency/pre-flight checks, field contracts, and the troubleshooting table
+are unchanged from the previous README revision — they all still apply
+(`builds.shipwright.io` qualification, dockerconfigjson secret type, CA
+configMap resolution in the BuildRun namespace, etc.).
+
+---
+
+## 4. References (anchored)
+
+**Red Hat — Builds for Red Hat OpenShift 1.7**
+- §1.1 *Creating a buildah build* — Build + `dockerfile` paramValue + BuildRun + verification:
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.7/html/work_with_builds/managing-builds-1#ob-creating-a-buildah-build_using-builds>
+- §1.3 *Authentication to container registries* — `spec.output.pushSecret`:
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.7/html-single/authentication/index#ob-authentication-to-container-registries_understanding-authentication-at-runtime>
+- *Configuring build strategies* — custom ClusterBuildStrategy:
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.7/html/configure/configuring-build-strategies>
+
+**Shipwright (upstream)** — section titles in case anchors shift
+- Build Strategies → *Volumes and VolumeMounts*, *System parameters*, *System results*:
+  <https://github.com/shipwright-io/build/blob/main/docs/buildstrategies.md#volumes-and-volumemounts>
+- Build → *Defining the Strategy*, *Defining ParamValues*, *Defining the Output*:
+  <https://github.com/shipwright-io/build/blob/main/docs/build.md#defining-the-strategy>
+- BuildRun → *Defining the Build Reference*, *Defining the ServiceAccount*:
+  <https://github.com/shipwright-io/build/blob/main/docs/buildrun.md#defining-the-serviceaccount>
+
+**OpenShift (legacy side, for the mapping table)**
+- BuildConfig Docker strategy options (`noCache`, `forcePull`) and image source
+  (`source.images`): OpenShift Container Platform docs → *Builds using
+  BuildConfig* → "Build strategies" / "Image source"
+  <https://docs.openshift.com/container-platform/latest/cicd/builds/creating-build-inputs.html#builds-define-build-inputs_creating-build-inputs>
+
+---
+
+## 5. Open items
+
+- Tag/branch parameterization (`#{IMAGE_TAG}#`, `#{BRANCH_TAG}#`, `#{JENKINS_TAG}#`) → pipeline task
+- `ImageChange`-style automation → Tekton Triggers (pipeline task)
+- `imageOptimizationPolicy: SkipLayers` → evaluate buildah `--squash` if layer count matters
+- Decision point: collapse S2I + runtime into a single multi-stage Dockerfile (eliminating S2I) — same question as the UniversalLabelPrint migration
