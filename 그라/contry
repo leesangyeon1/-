@@ -1,24 +1,9 @@
-Edit contribution
-must maintain the previous heatmap values
-add the more days from July 19 to August 4
-
-7-20: 6
-7-21: 3
-7-22: 10
-7-23: 12
-7-24: 12
-7-27: 10
-7-28: 3
-7-29: 1
-7-31: 4
-8-4: 4
-
 {
   "kind": "Panel",
   "spec": {
     "id": 3,
     "title": "Contribution",
-    "description": "GitHub-style grid: 7 weekday rows x 9 week columns",
+    "description": "GitHub-style grid: 7 weekday rows x 12 week columns",
     "links": [],
     "data": {
       "kind": "QueryGroup",
@@ -35,7 +20,7 @@ add the more days from July 19 to August 4
                   "name": "afsexq1mcb1fke"
                 },
                 "spec": {
-                  "csvContent": "time,Mon,Tue,Wed,Thu,Fri,Sat,Sun\n1779062400000,0,4,0,0,0,0,0\n1779667200000,0,0,1,0,6,0,0\n1780272000000,1,2,3,1,0,0,0\n1780876800000,0,0,0,0,0,0,0\n1781481600000,2,2,1,0,2,0,0\n1782086400000,0,1,0,0,0,0,0\n1782691200000,3,6,1,6,0,0,0\n1783296000000,5,3,4,1,2,0,0\n1783900800000,2,6,1,0,0,0,0",
+                  "csvContent": "time,Mon,Tue,Wed,Thu,Fri,Sat,Sun\n1779062400000,0,4,0,0,0,0,0\n1779667200000,0,0,1,0,6,0,0\n1780272000000,1,2,3,1,0,0,0\n1780876800000,0,0,0,0,0,0,0\n1781481600000,2,2,1,0,2,0,0\n1782086400000,0,1,0,0,0,0,0\n1782691200000,3,6,1,6,0,0,0\n1783296000000,5,3,4,1,2,0,0\n1783900800000,2,6,1,0,0,0,0\n1784505600000,6,3,10,12,12,0,0\n1785110400000,10,3,1,0,4,0,0\n1785715200000,0,4,0,0,0,0,0",
                   "scenarioId": "csv_content"
                 }
               },
