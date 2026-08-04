@@ -1,0 +1,13 @@
+# BuildRun for the runtime image.
+# Use `oc create -f`, NOT `oc apply -f` (generateName requirement).
+# Legacy `triggers: ConfigChange/ImageChange` have no Shipwright equivalent —
+# manual BuildRun for the PoC; Tekton Triggers takes over in the pipeline task.
+apiVersion: shipwright.io/v1beta1
+kind: BuildRun
+metadata:
+  generateName: rfipconfig-be-runtime-build-
+  namespace: openshift-builds
+spec:
+  build:
+    name: rfipconfig-be-runtime-build
+  serviceAccount: pipeline
