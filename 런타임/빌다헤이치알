@@ -1,0 +1,98 @@
+# ClusterBuildStrategy: buildah-hl
+# Dockerfile builds with:
+#   - internal CA configMap mounted (same mechanism as the s2i strategy)
+#   - BUILDER_IMAGE build-arg (replaces legacy chained image input)
+#   - --no-cache / --pull=always (replaces legacy dockerStrategy noCache/forcePull;
+#     the built-in buildah strategy has documented gaps for these, hence custom)
+apiVersion: shipwright.io/v1beta1
+kind: ClusterBuildStrategy
+metadata:
+  name: buildah-hl
+spec:
+  volumes:
+    - name: trust-manager-ca
+      overridable: false
+      configMap:
+        name: <need to be filled - CA configMap name, same one s2i.yaml mounts, e.g. hobbylobby.corp>
+  parameters:
+    - name: dockerfile
+      description: Dockerfile path relative to the source context dir
+      type: string
+      default: Dockerfile
+    - name: builder-image
+      description: Image passed as BUILDER_IMAGE build-arg (empty = no build-arg)
+      type: string
+      default: ""
+    - name: registries-search
+      description: Registry for short-name image resolution
+      type: string
+      default: quay.hobbylobby.corp
+    - name: storage-driver
+      description: buildah storage driver
+      type: string
+      default: vfs
+    - name: no-cache
+      description: Disable layer cache (legacy dockerStrategy.noCache)
+      type: string
+      default: "true"
+    - name: force-pull
+      description: Always pull base images (legacy dockerStrategy.forcePull)
+      type: string
+      default: "true"
+  securityContext:
+    runAsUser: 0
+    runAsGroup: 0
+  steps:
+    - name: buildah
+      image: <need to be filled - copy the exact image value from the buildah step in s2i.yaml>
+      workingDir: $(params.shp-source-root)
+      securityContext:
+        capabilities:
+          add: ["SETFCAP"]
+      volumeMounts:
+        - name: trust-manager-ca
+          mountPath: /etc/pki/ca-trust/extracted/trust-manager
+      command:
+        - /bin/bash
+      args:
+        - -c
+        - |
+          set -euo pipefail
+
+          # Short-name resolution -> quay (same pattern as s2i.yaml)
+          cat > /tmp/registries.conf <<CONF
+          [registries.search]
+          registries = ['$(params.registries-search)']
+          CONF
+
+          EXTRA_ARGS=""
+          if [ -n "$(params.builder-image)" ]; then
+            EXTRA_ARGS="--build-arg BUILDER_IMAGE=$(params.builder-image)"
+          fi
+          if [ "$(params.no-cache)" = "true" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --no-cache"
+          fi
+          if [ "$(params.force-pull)" = "true" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS --pull=always"
+          fi
+
+          echo "[INFO] Building image $(params.shp-output-image)"
+          buildah --storage-driver=$(params.storage-driver) bud \
+            --registries-conf=/tmp/registries.conf \
+            $EXTRA_ARGS \
+            --file=$(params.dockerfile) \
+            --tag=$(params.shp-output-image) \
+            $(params.shp-source-context)
+
+          echo "[INFO] Pushing image $(params.shp-output-image)"
+          buildah --storage-driver=$(params.storage-driver) push \
+            --digestfile=$(results.shp-image-digest.path) \
+            $(params.shp-output-image) \
+            docker://$(params.shp-output-image)
+      resources:
+        requests:
+          cpu: 250m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
