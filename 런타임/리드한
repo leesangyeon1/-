@@ -1,0 +1,145 @@
+# BuildConfig → Shipwright 변환 — `rfipconfig-be` 런타임 이미지
+
+레거시 체인형 BuildConfig 2개를 Shipwright Build 2개로 변환합니다. S2I(빌더)
+Build는 이미 정상 동작 중이며, 이 작업은 최종 배포 대상인 `rfipconfig-be`
+이미지를 만드는 **런타임 Build**를 추가하는 것입니다.
+
+플레이스홀더 규칙: 하드코딩하면 안 되는 값은 모든 파일에서
+**`<need to be filled - 설명>`** 형식으로 표시했습니다.
+
+---
+
+## 1. 변환 메커니즘 — 요소별 매핑
+
+레거시 BuildConfig #2 (`rfipconfig-be-#{JENKINS_TAG}#`, Docker 전략) → Shipwright:
+
+| 레거시 요소 | 레거시 값 | Shipwright 대응 | 위치 |
+|---|---|---|---|
+| `source.dockerfile` (인라인) | 14줄 인라인 dockerfile | Git에 커밋된 실제 `Dockerfile` | `Dockerfile` (저장소, 1단계) |
+| `source.images` (체인 이미지 입력) | `from: rfipconfig-be-builder:#{IMAGE_TAG}#`, `paths: /opt/app-root/ → .` | 멀티 스테이지 빌드: `ARG BUILDER_IMAGE` + `FROM ${BUILDER_IMAGE} AS builder` + `COPY --from=builder /opt/app-root/app.tar.gz .` | `Dockerfile` + `paramValues.builder-image` |
+| 인라인 base64 엔트리포인트 (`RUN echo -n '<b64>' \| base64 -d`) | `/tmp/entrypoint.sh`로 디코딩 | Git에 커밋된 실제 `entrypoint.sh` + `COPY entrypoint.sh /tmp/entrypoint.sh` | `entrypoint.sh` (저장소, 1단계) |
+| `RUN yum install unixODBC` / `RUN curl … ibm-iaccess … rpm -i` | 빌드 시점 패키지 설치 | **이번 케이스에서는 의도적으로 제외** (결정 사항). 이후 다시 필요해지면 앱 빌드가 아니라 베이스 이미지에 넣어야 함 | — |
+| `strategy.dockerStrategy.noCache: true` | | `--no-cache` 플래그 (전략 파라미터 `no-cache`, 기본값 `true`) | `buildah-hl.yaml` |
+| `strategy.dockerStrategy.forcePull: true` | | `--pull=always` 플래그 (전략 파라미터 `force-pull`, 기본값 `true`) | `buildah-hl.yaml` |
+| `strategy.dockerStrategy.imageOptimizationPolicy: SkipLayers` | | 직접 대응 없음. 가장 가까운 것은 buildah `--squash` (미적용 — 추후 평가) | — |
+| `output.to ImageStreamTag rfipconfig-be:#{IMAGE_TAG}#` | | `output.image: image-registry…/openshift-builds/rfipconfig-be:<tag>` — 내부 레지스트리 push 시 imagestreamtag 자동 생성, 별도 ImageStream 오브젝트 불필요 | `rfipconfig-be.yaml` |
+| `sourceSecret` (ssh-auth) | `github-repo-ssh-key-rfipconfig-…` | `source.git.cloneSecret` (`secret.yaml`에 이미 존재) | `rfipconfig-be.yaml` |
+| `triggers: ConfigChange / ImageChange` | | **Shipwright 대응 없음.** PoC에서는 수동 `BuildRun`, 파이프라인 태스크에서 Tekton Triggers + Pipeline 체이닝으로 대체 | `buildrun-runtime.yaml` |
+| `runPolicy: Serial`, 빌드 히스토리 제한 | | 순차 BuildRun은 파이프라인의 역할. 보존 정책은 `BuildRun.spec.retention` (보류) | — |
+| `#{JENKINS_TAG}#` 이름 접미사 | Jenkins 템플릿 치환 | `<need to be filled>` 마커. 파라미터화는 파이프라인 태스크로 이관 | 전체 파일 |
+| ImageStream 오브젝트 (2개) | | 불필요 (output 행 참고) | — |
+
+**체인 빌드의 현재 동작 방식:** S2I Build(`DOTNET_PACK=true`)가 빌더 이미지
+내부에 `/opt/app-root/app.tar.gz`를 생성하고 `rfipconfig-be-builder:<tag>`로
+push합니다. 런타임 Build는 그 이미지 참조를 `--build-arg BUILDER_IMAGE=…`로
+전달받아 buildah가 스테이지 1로 pull(이미 검증된 push와 동일한 레지스트리
+인증/TLS 경로)하고, `app.tar.gz`만 꺼내 깨끗한 `hl-dotnet` 베이스 위에
+레이어링합니다. 레거시 `source.images` + `COPY app-root/app.tar.gz .`와 결과는
+동일하지만, OpenShift 전용 이미지 입력 메커니즘 없이 표준 Dockerfile 방식으로
+동작합니다.
+
+---
+
+## 2. 파일
+
+| 파일 | 종류 | `<need to be filled>` 항목 |
+|---|---|---|
+| `rfipconfig-be.yaml` | Build 2개 | `revision` ×2 · S2I output 태그 · 런타임 `contextDir` · `builder-image` 태그 · 런타임 output 태그 |
+| `buildah-hl.yaml` | ClusterBuildStrategy | `steps[0].image` (`s2i.yaml`의 buildah 스텝에서 복사) · CA configMap 이름 |
+| `Dockerfile` | 저장소 파일 | `ARG BUILDER_IMAGE` 기본값 · 커밋할 저장소 경로 |
+| `entrypoint.sh` | 저장소 파일 | 없음 (내용 고정, 배포 시점 환경 변수는 헤더에 문서화) |
+| `buildrun-runtime.yaml` | BuildRun | 없음 |
+
+**⚠ 이름 변경:** S2I output을 `rfipconfig-be` → `rfipconfig-be-builder`로
+변경하여, 런타임 이미지가 최종 이름 `rfipconfig-be`(레거시와 동일, Argo CD가
+배포하는 이미지)를 가져갑니다. 적용 후 첫 런타임 BuildRun 전에 S2I BuildRun을
+한 번 재실행해야 합니다.
+
+---
+
+## 3. 빌드 순서 및 지침
+
+### 1단계 — 런타임 파일 Git 커밋
+```bash
+mkdir -p <need to be filled - 예: runtime/>
+cp Dockerfile entrypoint.sh <runtime-dir>/
+git add <runtime-dir>/ && git commit -m "Runtime image: Dockerfile + extracted entrypoint" && git push
+```
+`entrypoint.sh`는 **배포 시점**(빌드가 아니라 Deployment)에 다음 환경 변수가
+필요합니다: `AUTH_PASSWORD`, `APP_DLL`, `ASPNETCORE_ENVIRONMENT` — 그리고
+`/etc/pki/tls/private/auth-clientSecrets.pfx` 경로에 pfx 마운트 필요.
+
+### 2단계 — 전략 적용 (cluster-admin 필요)
+```bash
+oc apply -f buildah-hl.yaml
+oc get clusterbuildstrategy buildah-hl
+```
+
+### 3단계 — Build 2개 적용
+```bash
+oc apply -f rfipconfig-be.yaml
+oc get builds.shipwright.io -n openshift-builds   # 둘 다 Succeeded(등록 완료)여야 함
+```
+
+### 4단계 — S2I BuildRun 재실행 (output 이름 변경 반영)
+```bash
+oc create -f buidlrun.yaml      # 기존 S2I buildrun
+oc get buildruns.shipwright.io -n openshift-builds -w
+# SUCCEEDED=True 확인 후:
+oc get istag -n openshift-builds | grep rfipconfig-be-builder
+```
+
+### 5단계 — 런타임 BuildRun 실행
+```bash
+oc create -f buildrun-runtime.yaml     # apply가 아니라 create (generateName)
+oc get buildruns.shipwright.io -n openshift-builds -w
+oc logs -f <pod> -n openshift-builds --all-containers
+```
+
+### 6단계 — 검증
+- [ ] 스테이지 1: 내부 레지스트리에서 `rfipconfig-be-builder` pull 정상 (x509 / 인증 오류 없음)
+- [ ] `quay.hobbylobby.corp` 베이스 pull 정상 (x509 없음)
+- [ ] Push 정상, BuildRun `SUCCEEDED=True`
+- [ ] `oc get istag -n openshift-builds | grep 'rfipconfig-be:'`에 최종 이미지 표시
+- [ ] 스모크 테스트: 이미지 배포 시 `/tmp/entrypoint.sh` 기동 (환경 변수 3개 + pfx 마운트 필요)
+- [ ] 검증은 CLI로만 — 콘솔 BuildRun 상세 페이지는 여전히 크래시 (OCPBUGS-84214, v1.8.1)
+
+의존성/사전 점검, 필드 계약(field contracts), 트러블슈팅 표는 이전 README
+버전과 동일하게 모두 유효합니다 (`builds.shipwright.io` 전체 이름 사용,
+dockerconfigjson 시크릿 타입, CA configMap이 BuildRun 네임스페이스에서 해석되는
+점 등).
+
+---
+
+## 4. 참고 문서 (앵커 포함)
+
+**Red Hat — Builds for Red Hat OpenShift 1.7**
+- §1.1 *Creating a buildah build* — Build + `dockerfile` paramValue + BuildRun + 검증 절차:
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.7/html/work_with_builds/managing-builds-1#ob-creating-a-buildah-build_using-builds>
+- §1.3 *Authentication to container registries* — `spec.output.pushSecret`:
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.7/html-single/authentication/index#ob-authentication-to-container-registries_understanding-authentication-at-runtime>
+- *Configuring build strategies* — 커스텀 ClusterBuildStrategy:
+  <https://docs.redhat.com/en/documentation/builds_for_red_hat_openshift/1.7/html/configure/configuring-build-strategies>
+
+**Shipwright (업스트림)** — 앵커가 바뀔 수 있으므로 섹션 제목 병기
+- Build Strategies → *Volumes and VolumeMounts*, *System parameters*, *System results*:
+  <https://github.com/shipwright-io/build/blob/main/docs/buildstrategies.md#volumes-and-volumemounts>
+- Build → *Defining the Strategy*, *Defining ParamValues*, *Defining the Output*:
+  <https://github.com/shipwright-io/build/blob/main/docs/build.md#defining-the-strategy>
+- BuildRun → *Defining the Build Reference*, *Defining the ServiceAccount*:
+  <https://github.com/shipwright-io/build/blob/main/docs/buildrun.md#defining-the-serviceaccount>
+
+**OpenShift (레거시 측, 매핑 표 참고용)**
+- BuildConfig Docker 전략 옵션(`noCache`, `forcePull`) 및 이미지 소스
+  (`source.images`): OpenShift Container Platform 문서 → *Builds using
+  BuildConfig* → "Build strategies" / "Image source"
+  <https://docs.openshift.com/container-platform/latest/cicd/builds/creating-build-inputs.html#builds-define-build-inputs_creating-build-inputs>
+
+---
+
+## 5. 남은 항목
+
+- 태그/브랜치 파라미터화 (`#{IMAGE_TAG}#`, `#{BRANCH_TAG}#`, `#{JENKINS_TAG}#`) → 파이프라인 태스크
+- `ImageChange` 방식 자동화 → Tekton Triggers (파이프라인 태스크)
+- `imageOptimizationPolicy: SkipLayers` → 레이어 수가 중요하면 buildah `--squash` 평가
+- 결정 사항: S2I + 런타임을 단일 멀티 스테이지 Dockerfile로 통합(S2I 제거)할지 — UniversalLabelPrint 마이그레이션과 동일한 논점
