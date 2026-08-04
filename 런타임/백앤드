@@ -1,0 +1,77 @@
+# rfipconfig-be.yaml
+# Two Builds, replacing the two legacy BuildConfigs:
+#   1. rfipconfig-be-s2i-build      <- BuildConfig rfipconfig-be-builder-#{JENKINS_TAG}#  (S2I, compiles source)
+#   2. rfipconfig-be-runtime-build  <- BuildConfig rfipconfig-be-#{JENKINS_TAG}#          (Docker strategy, final app image)
+#
+# NAMING NOTE (change from current state):
+#   The S2I output is renamed rfipconfig-be -> rfipconfig-be-builder to match
+#   legacy naming, so the RUNTIME image can take the final name rfipconfig-be
+#   (this is the image Argo CD will deploy). Re-run the S2I BuildRun once after
+#   applying so the builder image exists under its new name.
+---
+apiVersion: shipwright.io/v1beta1
+kind: Build
+metadata:
+  name: rfipconfig-be-s2i-build
+  namespace: openshift-builds
+spec:
+  env:
+    - name: DOTNET_PACK                # produces /opt/app-root/app.tar.gz consumed by the runtime build
+      value: 'true'
+    - name: DOTNET_STARTUP_PROJECT
+      value: 'Rfipconfig.Api.csproj'
+    - name: PORT
+      value: "5000"
+    - name: SSL_CERT_FILE
+      value: /etc/pki/ca-trust/extracted/trust-manager/ca-certs.pem
+  source:
+    type: Git
+    git:
+      url: git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git
+      cloneSecret: github-repo-ssh-key-rfipconfig-be
+      revision: <need to be filled - branch, was #{BRANCH_TAG}#, e.g. master>
+      depth: 1
+    contextDir: 'Rfipconfig.Api'
+  strategy:
+    name: s2i
+    kind: ClusterBuildStrategy
+  paramValues:
+    - name: builder-image
+      value: 'quay.hobbylobby.corp/hl-images/hl-dotnet:60-rhel9-latest'
+  output:
+    # RENAMED: was .../rfipconfig-be:latest — the final name now belongs to the runtime image
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be-builder:<need to be filled - tag, was #{IMAGE_TAG}#, e.g. latest>
+    pushSecret: pipeline-push-secret
+---
+apiVersion: shipwright.io/v1beta1
+kind: Build
+metadata:
+  name: rfipconfig-be-runtime-build
+  namespace: openshift-builds
+spec:
+  env:
+    - name: SSL_CERT_FILE              # same CA trust mechanism proven on the S2I build
+      value: /etc/pki/ca-trust/extracted/trust-manager/ca-certs.pem
+  source:
+    type: Git
+    git:
+      url: git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git
+      cloneSecret: github-repo-ssh-key-rfipconfig-be
+      revision: <need to be filled - branch, same as S2I build>
+      depth: 1
+    # Directory containing Dockerfile + entrypoint.sh (Step 1 of README)
+    contextDir: <need to be filled - e.g. runtime/>
+  strategy:
+    name: buildah-hl
+    kind: ClusterBuildStrategy
+  paramValues:
+    - name: dockerfile
+      value: Dockerfile
+    # Replaces legacy source.images chained image input.
+    # MUST point at the S2I build's output image above (same registry path + tag):
+    - name: builder-image
+      value: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be-builder:<need to be filled - same tag as S2I output>
+  output:
+    # Final application image — takes over the legacy name rfipconfig-be:#{IMAGE_TAG}#
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be:<need to be filled - tag, was #{IMAGE_TAG}#, e.g. latest>
+    pushSecret: pipeline-push-secret
