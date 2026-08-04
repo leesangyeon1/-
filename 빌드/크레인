@@ -1,0 +1,280 @@
+# Crane 변환 리포트 — `build-area` 네임스페이스
+
+**BuildConfig → Shipwright Build 마이그레이션 평가**
+
+| | |
+|---|---|
+| **네임스페이스** | `build-area` |
+| **스캔된 BuildConfig 수** | 13 |
+| **도구** | `crane` (Builds for Red Hat OpenShift 마이그레이션 유틸리티) |
+| **오퍼레이터** | Builds for Red Hat OpenShift v1.8.1 (Shipwright) |
+| **날짜** | 2026-08-04 |
+| **결론** | ✅ **수정 작업을 동반하면 실행 가능.** 해결 불가능한 블로커 없음. S2I 빌더 구성은 **경미한** 수정으로 변환 가능하며, Docker 전략의 체인 빌드는 **중간 수준**의 리팩터링(멀티 스테이지 Dockerfile 패턴)이 필요. 모든 경고는 알려진 RFE에 대응되며, `rfipconfig-be` PoC에서 이미 검증된 우회 방법이 존재. |
+
+---
+
+## 1. 요약 (Executive Summary)
+
+Crane은 13개 BuildConfig를 모두 정상적으로 파싱했습니다. 결과는 두 가지 카테고리로 명확히 나뉩니다:
+
+| 카테고리 | 개수 | 변환 난이도 | 이유 |
+|---|---|---|---|
+| **A. S2I 빌더 빌드** (`*-builder-*`) | 6 | 🟢 **경미** — 설정 변경만 필요 | 깨끗한 S2I 변환. 이슈는 ImageStream 푸시 대상(BUILD-1756)과 환경변수 시크릿 경고 1건(BUILD-1744)뿐. `rfipconfig-be`에서 이미 검증된 동일 패턴. |
+| **B. Docker 전략 런타임 빌드** | 7 | 🟡 **중간** — Dockerfile 리팩터링 필요 | 인라인 Dockerfile(하드 에러), Image Source `Paths` 체이닝(하드 에러), `From` 오버라이드(BUILD-1746), buildah 플래그 미지원(BUILD-1578/1580/1581). Dockerfile을 Git으로 추출하고 체인 이미지 패턴을 멀티 스테이지 빌드로 변환해야 함. |
+
+**마이그레이션이 불가능한 BuildConfig는 없습니다.** 두 개의 `ERRO`(인라인 Dockerfile, Image Source `Paths`)만이 하드 블로커이며, 둘 다 동일한 리팩터링으로 해결됩니다: **인라인 Dockerfile을 저장소 내 멀티 스테이지 Dockerfile로 옮기고 `COPY --from=`으로 빌더 이미지를 참조** — OpenShift 체인 이미지 패턴의 대체입니다.
+
+### BuildConfig별 처리 방안
+
+| # | BuildConfig | 전략 | 카테고리 | 에러 | 공수 |
+|---|---|---|---|---|---|
+| 0 | `buyers-universal-label-print-be-builder-sandbox-105` | S2I | A | 없음 | 경미 |
+| 1 | `buyers-universal-label-print-be-sandbox-105` | Docker | B | 인라인 Dockerfile, Image Paths | 중간 |
+| 2 | `buyers-universal-label-print-fe-builder-sandbox-105` | S2I | A | 없음 (시크릿 경고) | 경미 |
+| 3 | `buyers-universal-label-print-fe-sandbox-105` | Docker | B | 인라인 Dockerfile, Image Paths | 중간 |
+| 4 | `docker-build-hl-codeql-rhel9-229` | Docker | B | 인라인 Dockerfile | 중간 (체이닝 없음 — 상대적으로 단순) |
+| 5 | `docker-build-hl-init-secretserver-rhel9-18` | Docker | B | 인라인 Dockerfile | 중간 (체이닝 없음 — 상대적으로 단순) |
+| 6 | `docker-build-hl-pipeline-rhel10-181` | Docker | B | 인라인 Dockerfile | 중간 (체이닝 없음 — 상대적으로 단순) |
+| 7 | `lms-api-be-builder-develop-1` | S2I | A | 없음 | 경미 |
+| 8 | `lms-api-be-builder-main-1` | S2I | A | 없음 | 경미 |
+| 9 | `lms-api-be-builder-release-1.2.1-1` | S2I | A | 없음 | 경미 |
+| 10 | `lms-api-be-develop-1` | Docker | B | 인라인 Dockerfile, Image Paths | 중간 |
+| 11 | `lms-api-be-main-1` | Docker | B | 인라인 Dockerfile, Image Paths | 중간 |
+| 12 | `lms-api-be-release-1.2.1-1` | Docker | B | 인라인 Dockerfile, Image Paths | 중간 |
+
+페어링 구조에 주목: 각 Docker 전략 빌드(1, 3, 10, 11, 12)는 `Image Source Paths`를 통해 매칭되는 S2I 빌더 빌드의 산출물을 소비합니다. 이는 **빌더 → 런타임 체인 빌드 쌍**으로, 이미 매핑 완료한 `UniversalLabelPrint` 패턴과 동일합니다. 빌드 4–6은 독립형 Docker 빌드(인라인 Dockerfile만 있고 체이닝 없음)로, 카테고리 B 중 더 단순한 하위 그룹입니다.
+
+---
+
+## 2. 이슈별 해결 가이드
+
+### 2.1 `WARN` — OpenShift ImageStream 푸시 미지원
+**RFE: [BUILD-1756](https://issues.redhat.com/browse/BUILD-1756)** — **13개 전체** BuildConfig에 해당
+
+**의미:** Shipwright는 `kind: ImageStreamTag`를 출력 대상으로 사용할 수 없으며, 컨테이너 레지스트리에 직접 푸시합니다.
+
+**해결 방법 — 다음을 수행:**
+1. 출력을 ImageStreamTag에서 직접 레지스트리 참조로 변경:
+   ```yaml
+   spec:
+     output:
+       image: quay.hobbylobby.corp/build-area/lms-api-be:develop
+       pushSecret: quay-push-secret
+   ```
+   대안으로 OpenShift 내부 레지스트리 주소(`image-registry.openshift-image-registry.svc:5000/build-area/<name>:<tag>`)로 푸시하는 방법도 있습니다 — ImageStream은 내부 레지스트리로 푸시된 이미지를 자동 추적하므로, ImageStream 기반의 다운스트림 배포가 변경 없이 계속 동작합니다.
+2. 푸시 시크릿은 반드시 **`kubernetes.io/dockerconfigjson`** 타입으로 생성 — buildah는 `service-account-token` 시크릿을 읽을 수 없음:
+   ```bash
+   oc create secret docker-registry quay-push-secret \
+     --docker-server=quay.hobbylobby.corp \
+     --docker-username=unused \
+     --docker-password=<token> -n build-area
+   ```
+3. 대상 네임스페이스가 존재하는지 확인하고 `pipeline` ServiceAccount에 `system:image-builder` 권한 부여:
+   ```bash
+   oc policy add-role-to-user system:image-builder system:serviceaccount:build-area:pipeline -n build-area
+   ```
+
+**공수:** Build당 약 15분 (기계적 수정). quay vs. 내부 레지스트리 결정은 1회만 필요.
+
+---
+
+### 2.2 `WARN` — 기본 제공 buildah 전략에서 NoCache 미지원
+**RFE: [BUILD-1578](https://issues.redhat.com/browse/BUILD-1578)** — 7개 BuildConfig
+
+**해결 방법 — 다음을 수행:** 기본 제공 `buildah` ClusterBuildStrategy를 커스텀 `buildah-hl` 전략(내부 CA 마운트를 위해 이미 필요)으로 복사하고, `buildah bud` 인자에 `--no-cache`를 파라미터화하여 추가:
+```yaml
+# buildah-hl ClusterBuildStrategy 내부
+parameters:
+  - name: no-cache
+    description: 레이어 캐시 비활성화
+    default: "true"
+# 빌드 스텝 args:
+    - --no-cache=$(params.no-cache)
+```
+이 빌드들은 기존에 `noCache: true`로 실행되던 CI 빌드이므로, 기본값을 `"true"`로 두면 현재 동작이 유지됩니다.
+
+**공수:** 전략 1회 수정(~30분)으로 7개 빌드 전체 커버.
+
+---
+
+### 2.3 `WARN` — ForcePull 미지원
+**RFE: [BUILD-1580](https://issues.redhat.com/browse/BUILD-1580)** — 9개 BuildConfig
+
+**해결 방법 — 다음을 수행:** 동일한 커스텀 전략 방식 — `buildah-hl`의 buildah 인자에 `--pull=always` 추가:
+```yaml
+parameters:
+  - name: pull-policy
+    default: "always"
+# args:
+    - --pull=$(params.pull-policy)
+```
+`forcePull: true`(노드 캐시를 신뢰하지 않고 항상 최신 베이스 이미지 가져오기)와 동일한 동작을 재현합니다.
+
+**공수:** 2.2의 `buildah-hl` 수정에 함께 포함. 추가 공수 ~0.
+
+---
+
+### 2.4 `WARN` — ImageOptimizationPolicy (`--squash`) 미지원
+**RFE: [BUILD-1581](https://issues.redhat.com/browse/BUILD-1581)** — 9개 BuildConfig
+
+**해결 방법 — 다음을 수행:** 두 가지 옵션:
+- **권장:** 제거. `SkipLayers`/squash는 주로 구식 체인 빌드에서 레이어 수를 줄이는 용도였으며, 깨끗한 멀티 스테이지 Dockerfile에서는 최종 스테이지가 이미 작습니다. 마이그레이션 후 최종 이미지 크기를 검증하고, 문제없으면 조치 불필요.
+- **squash가 정말 필요한 경우:** `buildah-hl` 인자에 `--squash` 추가 (위와 동일한 패턴으로 `squash` 파라미터로 제어).
+
+**공수:** 0 (제거 시) 또는 전략 수정에 포함.
+
+---
+
+### 2.5 `WARN` — Docker 전략의 `From` 필드 미지원
+**RFE: [BUILD-1746](https://issues.redhat.com/browse/BUILD-1746)** — `buyers-universal-label-print-fe-sandbox-105`
+
+**의미:** BuildConfig의 Docker 전략은 빌드 시점에 Dockerfile의 `FROM`을 오버라이드할 수 있었지만, Shipwright의 buildah 전략은 불가능합니다.
+
+**해결 방법 — 다음을 수행:** Dockerfile 자체에서 베이스 이미지를 build-arg로 파라미터화하고, Build CR에서 전달:
+```dockerfile
+ARG BUILDER_IMAGE=quay.hobbylobby.corp/build-area/buyers-universal-label-print-frontend-builder:sandbox
+FROM ${BUILDER_IMAGE} AS builder
+```
+```yaml
+# Build CR
+spec:
+  paramValues:
+    - name: build-args
+      values:
+        - value: BUILDER_IMAGE=quay.hobbylobby.corp/build-area/buyers-universal-label-print-frontend-builder:sandbox
+```
+UniversalLabelPrint 매핑에서 이미 검증된 `BUILDER_IMAGE` build-arg 패턴과 동일합니다.
+
+**공수:** 대상 Dockerfile당 ~30분 (어차피 2.7 리팩터링에 포함되어 진행).
+
+---
+
+### 2.6 `WARN` — 빌드 환경에서 시크릿 미지원
+**RFE: [BUILD-1744](https://issues.redhat.com/browse/BUILD-1744)** — `buyers-universal-label-print-fe-builder-sandbox-105`
+
+**의미:** BuildConfig에서는 Secret을 빌드 환경변수로 주입(`valueFrom: secretKeyRef`)할 수 있었지만, 이 오퍼레이터 버전의 Shipwright Build `spec.env`는 시크릿 참조를 지원하지 않습니다.
+
+**해결 방법 — 다음을 수행:** 값의 민감도에 따라 선택:
+1. **실제로 민감하지 않은 값** (예: npm 레지스트리 URL): Build CR에 일반 env 값으로 인라인.
+2. **민감한 값** (예: npm 인증 토큰): 빌드 전략의 볼륨 지원(`spec.volumes`로 Secret 참조, 전략에서 마운트)을 통해 마운트하고 S2I assemble 스크립트 / `.npmrc`가 파일을 읽도록 처리하거나, `cloneSecret` 방식의 마운트된 자격증명으로 처리. Git에 커밋하지 말 것 — Secret 자체는 GitOps 시크릿 결정에 따라 ESO/Sealed Secrets 경유로 관리.
+3. 어떤 환경변수가 경고를 유발했는지 먼저 확인: `oc get bc buyers-universal-label-print-fe-builder-sandbox-105 -o yaml | grep -A5 valueFrom`
+
+**공수:** ~1–2시간 (시크릿 식별, 주입 방식 선택, 테스트).
+
+---
+
+### 2.7 `ERRO` — 인라인 Dockerfile 미지원 ⛔ (하드 블로커)
+**7개 BuildConfig** (1, 3, 4, 5, 6, 10, 11, 12 패턴)
+
+**의미:** `spec.source.dockerfile`에 Dockerfile이 인라인으로 포함된 BuildConfig에 대해 crane이 유효한 Build를 생성할 수 없습니다. buildah 전략은 Dockerfile이 소스 저장소 내 파일로 존재해야 합니다.
+
+**해결 방법 — 다음을 수행:**
+1. 각 인라인 Dockerfile 추출:
+   ```bash
+   oc get bc <name> -o jsonpath='{.spec.source.dockerfile}' > Dockerfile
+   ```
+2. 그 안에 포함된 base64 인코딩된 entrypoint 스크립트도 실제 저장소 파일로 추출 (유지보수성 + 버전 관리 — PoC에서 확립된 원칙).
+3. 앱 저장소(또는 독립형 빌드 4–6의 경우 전용 `containerfiles/` 저장소)에 커밋한 후 Build가 참조하도록 설정:
+   ```yaml
+   spec:
+     paramValues:
+       - name: dockerfile
+         value: Dockerfile   # contextDir 기준 상대 경로
+   ```
+
+**공수:** PR + 리뷰 포함 BuildConfig당 ~1–2시간. 마이그레이션 시간의 대부분이 여기에 소요됩니다.
+
+---
+
+### 2.8 `ERRO` — Image Source `Paths` 미지원 ⛔ (하드 블로커)
+**5개 BuildConfig** (1, 3, 10, 11, 12)
+
+**의미:** 이 BuildConfig들은 OpenShift **체인 빌드** 패턴을 사용합니다 — 빌더 이미지(`buyers-universal-label-print-backend-builder-sandbox-105:sandbox`, `lms-api-be-builder-*`)에서 산출물 경로를 복사해 런타임 빌드에 넣는 방식. Shipwright에는 `spec.source.images[].paths`에 해당하는 기능이 없습니다.
+
+**해결 방법 — 다음을 수행:** 체이닝을 **멀티 스테이지 Dockerfile의 `COPY --from=`**으로 대체 — 2.7에서 추출한 Dockerfile에 통합:
+```dockerfile
+ARG BUILDER_IMAGE
+FROM ${BUILDER_IMAGE} AS builder
+# (빌더 이미지에는 S2I 빌드로 컴파일된 앱이 이미 포함되어 있음)
+
+FROM registry.access.redhat.com/ubi9/dotnet-80-runtime AS runtime
+COPY --from=builder /opt/app-root/app/publish /opt/app-root/app
+...
+```
+아키텍처 옵션 두 가지 (PoC 백로그에 이미 있는 결정 포인트):
+- **옵션 1 — 2단계 Build 체인 유지:** S2I 빌더 Build가 레지스트리에 푸시 → buildah Build가 `BUILDER_IMAGE` build-arg로 이를 pull. Tekton Pipeline이 순서를 제어 (`ImageChange` 트리거 대체). 리스크가 낮고 현재 구조를 보존. **이번 마이그레이션 단계에서 권장.**
+- **옵션 2 — 단일 멀티 스테이지 Dockerfile로 통합:** S2I를 완전히 제거하고 하나의 Build에서 컴파일 + 런타임 스테이지 모두 수행. 장기적으로 더 깔끔하지만 빌드 의미가 더 크게 바뀌고 재사용 가능한 빌더 이미지를 잃음.
+
+**공수:** 2.7의 Dockerfile 작업에 포함 + Tekton Pipeline 템플릿 1회 작성(~1일, 5개 쌍 전체에 재사용).
+
+---
+
+## 3. 실행 가능성 및 공수 산정
+
+### 종합 평가
+
+**중간 수준의 수정 작업으로 실행 가능.** Red Hat RFE 해결을 기다려야 하는 항목은 없습니다 — 모든 미지원 항목에 지원되는 우회 방법이 존재합니다 (커스텀 ClusterBuildStrategy, 직접 레지스트리 푸시, 멀티 스테이지 Dockerfile). 핵심은 **이 모든 패턴이 `rfipconfig-be` / UniversalLabelPrint PoC 작업에서 이미 검증되었다**는 점 — 새로운 R&D가 아니라 검증된 플레이북의 반복입니다.
+
+### 1회성 기반 작업 (일부 완료)
+
+| 작업 | 공수 | 상태 |
+|---|---|---|
+| 커스텀 `buildah-hl` ClusterBuildStrategy (CA 마운트 + `--no-cache`, `--pull`, 선택적 `--squash`) | 0.5일 | CA 마운트 완료; 플래그 추가 필요 |
+| `build-area`용 푸시 시크릿 + RBAC 설정 | 0.5일 | `openshift-builds`에서 패턴 검증 완료 |
+| 레지스트리 대상 결정 (quay vs. 내부 레지스트리) | 0.5일 (논의) | 미결 |
+| 빌더→런타임 체이닝용 Tekton Pipeline 템플릿 | 1일 | UniversalLabelPrint 매핑에서 설계 완료 |
+| **소계** | **~2.5일** | |
+
+### BuildConfig별 작업
+
+| 카테고리 | 개수 | 건당 | 소계 |
+|---|---|---|---|
+| A — S2I 빌더 빌드 (출력 수정, 시크릿, BuildRun 검증) | 6 | ~0.5일 | 3일 |
+| B — 독립형 Docker 빌드 (Dockerfile 추출, 검증) | 3 | ~0.5–1일 | 2일 |
+| B — 체인 Docker 빌드 (Dockerfile 리팩터링 + build-arg + 파이프라인 연결 + 검증) | 5쌍* | ~1–1.5일 | 6일 |
+| **소계** | | | **~11일** |
+
+\* 체인 빌드 5개는 빌더 빌드 6개 중 5개와 짝을 이루며, 쌍 단위 end-to-end 검증은 체인 빌드 라인에 포함해 산정.
+
+### 총계
+
+| 시나리오 | 산정 |
+|---|---|
+| **엔지니어 1명, 전담** | 검증 및 앱별 README/문서화 포함 **~13–14 근무일 (≈ 3주)** |
+| **엔지니어 1명 + 리뷰어 1명, 앱 트랙 병렬 진행** | 달력 기준 ~2주 |
+| 이번 단계에 Tekton Triggers(`ImageChange` 웹훅 대체) 포함 시 버퍼 추가 | +3–5일 |
+
+`lms-api-be` 세트(7, 8, 9, 10, 11, 12)는 거의 동일한 브랜치 변형 3개입니다 — `develop`을 먼저 완료하면 `main`과 `release-1.2.1`은 태그만 변경한 복사(각 ~1시간)이므로, 산정치가 BuildConfig 수에 선형 비례하지 않는 이유입니다.
+
+### 리스크 노트
+
+- **콘솔 플러그인 버그 OCPBUGS-84214**는 v1.8.1에서 여전히 유효 — BuildRun 검증은 웹 콘솔 상세 페이지가 아니라 `oc get buildruns` / `shp` CLI로 수행할 것.
+- 다운스트림 Deployment/Argo 앱이 **ImageStreamTag**를 참조하는 경우, 내부 레지스트리 대신 quay로 푸시하면 그 연결이 끊어집니다 — 내부 레지스트리로 푸시(ImageStream 자동 추적)하거나 Argo 매니페스트의 이미지 참조를 업데이트해야 합니다. 레지스트리 대상 결정 전에 이 점을 반드시 확인할 것.
+- Crane 출력물은 **최종 매니페스트가 아닌 스캐폴딩**으로 취급 — 생성된 각 Build CR을 검토하고 기존 방식대로 환경별 필드에 `CHANGE_ME` 스타일 검토 패스를 적용할 것.
+
+---
+
+## 4. 권장 진행 순서
+
+1. `buildah-hl` 전략 플래그 확정 (2.2–2.4) — 이후 모든 작업의 선행 조건
+2. 레지스트리 대상 결정 (2.1) — 13개 전체 출력에 영향
+3. `lms-api-be-builder-develop-1` + `lms-api-be-develop-1`을 파일럿 쌍으로 마이그레이션 (전체 패턴: S2I + 추출된 멀티 스테이지 Dockerfile + Tekton 체이닝)
+4. 확산: 나머지 `lms-api-be` 브랜치 → UniversalLabelPrint BE/FE 쌍 → 독립형 `docker-build-hl-*` 빌드
+5. FE 빌더 시크릿 주입(2.6)은 해당 앱 마이그레이션 시 함께 해결
+6. `shp build run --follow` / `oc logs`로 쌍 단위 end-to-end 검증
+
+---
+
+## 5. 참조 링크
+
+| 이슈 | 링크 | 유형 |
+|---|---|---|
+| ImageStream 푸시 | https://issues.redhat.com/browse/BUILD-1756 | RFE / 경고 |
+| NoCache 플래그 | https://issues.redhat.com/browse/BUILD-1578 | RFE / 경고 |
+| ForcePull 플래그 | https://issues.redhat.com/browse/BUILD-1580 | RFE / 경고 |
+| Squash 플래그 | https://issues.redhat.com/browse/BUILD-1581 | RFE / 경고 |
+| Docker `From` 오버라이드 | https://issues.redhat.com/browse/BUILD-1746 | RFE / 경고 |
+| 빌드 환경 시크릿 | https://issues.redhat.com/browse/BUILD-1744 | RFE / 경고 |
+| 콘솔 BuildRun 페이지 크래시 | https://issues.redhat.com/browse/OCPBUGS-84214 | 알려진 버그 (우회: CLI) |
+| 인라인 Dockerfile | — | 하드 에러 → 저장소로 추출 (§2.7) |
+| Image Source `Paths` | — | 하드 에러 → 멀티 스테이지 `COPY --from` (§2.8) |
