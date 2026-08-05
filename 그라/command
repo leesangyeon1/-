@@ -1,0 +1,78 @@
+{
+  "kind": "Panel",
+  "spec": {
+    "id": 8,
+    "title": "Number of Commands",
+    "description": "commands run during the internship",
+    "links": [],
+    "data": {
+      "kind": "QueryGroup",
+      "spec": {
+        "queries": [
+          {
+            "kind": "PanelQuery",
+            "spec": {
+              "query": {
+                "kind": "DataQuery",
+                "version": "v0",
+                "group": "grafana-testdata-datasource",
+                "datasource": {
+                  "name": "afsexq1mcb1fke"
+                },
+                "spec": {
+                  "csvContent": "commands\n3763",
+                  "scenarioId": "csv_content"
+                }
+              },
+              "refId": "A",
+              "hidden": false
+            }
+          }
+        ],
+        "transformations": [],
+        "queryOptions": {}
+      }
+    },
+    "vizConfig": {
+      "kind": "VizConfig",
+      "group": "stat",
+      "version": "13.1.1",
+      "spec": {
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": ""
+          },
+          "orientation": "auto",
+          "textMode": "auto",
+          "wideLayout": true,
+          "colorMode": "value",
+          "graphMode": "none",
+          "justifyMode": "auto",
+          "showPercentChange": false,
+          "percentChangeColorMode": "standard"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "value": null,
+                  "color": "orange"
+                }
+              ]
+            },
+            "color": {
+              "mode": "thresholds"
+            }
+          },
+          "overrides": []
+        }
+      }
+    }
+  }
+}
