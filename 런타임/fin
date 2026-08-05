@@ -1,0 +1,540 @@
+# rfipconfig-be Runtime Image Build — Shipwright Migration Runbook
+# rfipconfig-be 런타임 이미지 빌드 — Shipwright 마이그레이션 런북
+
+> **English first, 한국어는 아래 ([바로가기](#한국어-korean))**
+> Replaces legacy BuildConfig `rfipconfig-be-#{JENKINS_TAG}#` (inline Dockerfile + chained image) with a Shipwright two-Build sequence: **S2I builder image → buildah runtime image**.
+
+---
+
+## English
+
+### Prerequisites (already done — verify only)
+
+| Check | Command | Expected |
+|---|---|---|
+| S2I build works | `oc get builds.shipwright.io rfipconfig-be-s2i-build -n openshift-builds` | Exists, registered |
+| SA + RBAC | `oc get rolebinding rb-pipeline-image-builder -n openshift-builds` | Exists (`system:image-builder` → `pipeline`) |
+| Push secret | `oc get secret pipeline-push-secret -n openshift-builds -o jsonpath='{.type}'` | `kubernetes.io/dockerconfigjson` (NOT service-account-token) |
+| CA configMap | `oc get configmap hobbylobby.corp -n openshift-builds` | Exists |
+
+---
+
+### Step 0 — Fix output image collision in `rfipconfig-be.yaml`
+
+**File:** `rfipconfig-be.yaml` — **first Build** (`rfipconfig-be-s2i-build`), `spec.output.image` (near the bottom of the first Build, currently:)
+
+```yaml
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be:latest
+```
+
+**Change to** (the S2I output is the *builder* image, not the final image — the runtime Build consumes it):
+
+```yaml
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be-builder:latest
+```
+
+**Why:** As written, both Builds push to `rfipconfig-be:latest` and the runtime Build references a `rfipconfig-be-builder` tag that nothing produces.
+
+Apply:
+
+```bash
+oc apply -f rfipconfig-be.yaml   # re-apply after editing (both Builds edited in Step 3 too — can defer to one apply)
+```
+
+---
+
+### Step 1 — Commit runtime files to Git
+
+Work in a clone of `git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git`, branch `master`.
+
+**1a. Create directory:**
+
+```bash
+cd rfipconfig
+mkdir -p runtime
+```
+
+**1b. Create `runtime/entrypoint.sh`** — this is the base64 blob from the legacy BuildConfig (`spec.source.dockerfile`, the `RUN echo -n 'IyEvYmluL3No...' | base64 -d` line), decoded:
+
+```sh
+#!/bin/sh
+dotnet new tool-manifest
+dotnet tool install dotnet-certificate-tool
+dotnet certificate-tool add --cert /etc/pki/tls/private/auth-clientSecrets.pfx --password $AUTH_PASSWORD
+dotnet $APP_DLL --environment $ASPNETCORE_ENVIRONMENT
+```
+
+**1c. Create `runtime/Dockerfile`** — multi-stage version of the legacy inline Dockerfile. The `COPY --from=builder` replaces the BuildConfig `source.images[].paths` chained-image copy:
+
+```dockerfile
+FROM image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be-builder:latest AS builder
+
+FROM quay.hobbylobby.corp/hl-images/hl-dotnet:60-rhel9-latest
+USER 0
+COPY --from=builder /opt/app-root/app.tar.gz .
+RUN tar -xzf app.tar.gz && rm app.tar.gz
+RUN yum -y install unixODBC --disablerepo=\* --enablerepo=ubi-9*
+RUN curl -fSL -o /tmp/ibm-iaccess.rpm http://hpsatellite01.hobbylobby.corp/pulp/isos/HL/Library/custom/Apache/Tomcat/ibm-iaccess-1.1.0.15-1.0.x86_64.rpm \
+ && rpm -i /tmp/ibm-iaccess.rpm && rm /tmp/ibm-iaccess.rpm
+COPY entrypoint.sh /tmp/entrypoint.sh
+RUN chgrp -R 0 /opt/app-root/* && chmod -R g=u /opt/app-root/* \
+ && chgrp 0 /tmp/entrypoint.sh && chmod 754 /tmp/entrypoint.sh
+USER 1001
+CMD ["/tmp/entrypoint.sh"]
+```
+
+> Line 1 mapping: legacy BuildConfig copied `/opt/app-root/` from `rfipconfig-be-builder-#{JENKINS_TAG}#:#{IMAGE_TAG}#`. Here the builder image name is hardcoded (PoC uses fixed `latest` tag). Parameterize with `ARG BUILDER_IMAGE` later once the strategy supports build-args.
+
+**1d. Commit and push:**
+
+```bash
+git add runtime/
+git commit -m "Runtime image: Dockerfile + extracted entrypoint (BuildConfig migration)"
+git push origin master
+```
+
+---
+
+### Step 2 — Create `buildah-hl` ClusterBuildStrategy
+
+The built-in `buildah` strategy does **not** mount the corporate CA → x509 errors pulling from `quay.hobbylobby.corp`.
+
+**2a. Export the built-in strategy:**
+
+```bash
+oc get clusterbuildstrategy buildah -o yaml > buildah-hl.yaml
+```
+
+**2b. Edit `buildah-hl.yaml`:**
+
+| # | Location in file | Edit |
+|---|---|---|
+| 1 | `metadata.name` | `buildah` → `buildah-hl` |
+| 2 | `metadata` block | Delete `resourceVersion`, `uid`, `creationTimestamp`, `generation`, and the entire `status:` block if present |
+| 3 | `spec.volumes` (bottom of spec; create the list if absent) | Append the CA volume (below) |
+| 4 | Each step under `spec.steps` → `volumeMounts` | Append the CA volumeMount (below) |
+| 5 | The main build step's script (`args` → the `set -euo pipefail` shell block) | Insert `update-ca-trust extract` as the first line after `set -euo pipefail` |
+
+Volume (edit #3):
+
+```yaml
+  volumes:
+    - name: trust-manager-ca
+      configMap:
+        name: hobbylobby.corp
+        defaultMode: 420
+```
+
+VolumeMount (edit #4):
+
+```yaml
+        - mountPath: /etc/pki/ca-trust/extracted/trust-manager
+          name: trust-manager-ca
+          readOnly: true
+```
+
+> These mirror the working pattern in `s2i.yaml` (see its `volumeMounts` and `volumes` sections and the `update-ca-trust extract` line at the top of each step script).
+
+**2c. Apply and verify:**
+
+```bash
+oc apply -f buildah-hl.yaml
+oc get clusterbuildstrategy buildah-hl
+```
+
+---
+
+### Step 3 — Fix the runtime Build in `rfipconfig-be.yaml`
+
+**File:** `rfipconfig-be.yaml` — **second Build** (`rfipconfig-be-runtime-build`).
+
+| # | Field | Current | Change to | Why |
+|---|---|---|---|---|
+| 1 | `spec.source.contextDir` | *(empty)* | `runtime` | Point at the new Git directory from Step 1 |
+| 2 | `spec.paramValues[0]` (`dockerfile`) | `Dockerfile` | *(keep)* | Path is relative to `contextDir` |
+| 3 | `spec.paramValues[1]` (`builder-image`) | `image-registry...rfipconfig-be-builder:<need to be filled>` | **Delete both lines** | `builder-image` is an S2I param; the buildah strategy has no such param — the FROM is hardcoded in the Dockerfile |
+| 4 | `spec.strategy.name` | `buildah-hl` | *(keep)* | Now exists after Step 2 |
+
+Resulting runtime Build spec (final form):
+
+```yaml
+apiVersion: shipwright.io/v1beta1
+kind: Build
+metadata:
+  name: rfipconfig-be-runtime-build
+  namespace: openshift-builds
+spec:
+  env:
+    - name: SSL_CERT_FILE
+      value: /etc/pki/ca-trust/extracted/trust-manager/ca-certs.pem
+  source:
+    type: Git
+    git:
+      url: git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git
+      cloneSecret: github-repo-ssh-key-rfipconfig-be
+      revision: master
+      depth: 1
+    contextDir: runtime
+  strategy:
+    name: buildah-hl
+    kind: ClusterBuildStrategy
+  paramValues:
+    - name: dockerfile
+      value: Dockerfile
+  output:
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be:latest
+    pushSecret: pipeline-push-secret
+```
+
+Apply and verify registration:
+
+```bash
+oc apply -f rfipconfig-be.yaml
+oc get builds.shipwright.io -n openshift-builds
+# Both Builds must show REGISTERED=True. (Never plain `oc get build` — that hits build.openshift.io)
+```
+
+---
+
+### Step 4 — Create BuildRun files
+
+**File:** `buildrun-runtime.yaml` (new). Use `generateName` so reruns don't collide — and therefore `oc create`, never `oc apply`:
+
+```yaml
+apiVersion: shipwright.io/v1beta1
+kind: BuildRun
+metadata:
+  generateName: rfipconfig-be-runtime-build-
+  namespace: openshift-builds
+spec:
+  build:
+    name: rfipconfig-be-runtime-build
+  serviceAccount: pipeline
+```
+
+(Optionally convert the existing `buildrun.yaml` for the S2I build to `generateName: rfipconfig-be-s2i-build-` the same way.)
+
+---
+
+### Step 5 — Run the sequence
+
+```bash
+# 1. Builder image (S2I)
+oc create -f buildrun.yaml -n openshift-builds
+
+# 2. Watch until Succeeded=True
+oc get buildruns.shipwright.io -n openshift-builds -w
+
+# 3. Runtime image (buildah) — only after step 2 succeeds
+oc create -f buildrun-runtime.yaml -n openshift-builds
+oc get buildruns.shipwright.io -n openshift-builds -w
+```
+
+> ⚠️ **OCPBUGS-84214** (operator v1.8.1): do not open the BuildRun detail page in the web console — it crashes with React error #310. Use CLI only:
+
+```bash
+oc describe buildrun <name> -n openshift-builds
+oc logs -f -n openshift-builds -l buildrun.shipwright.io/name=<name> --all-containers
+# or: shp buildrun logs <name> -n openshift-builds --follow
+```
+
+**Verify the output image:**
+
+```bash
+oc get istag rfipconfig-be:latest -n openshift-builds
+```
+
+---
+
+### Troubleshooting quick reference
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `x509: certificate signed by unknown authority` | CA not mounted / not extracted | Verify Step 2 edits #3–#5; confirm `SSL_CERT_FILE` env in Build CR |
+| `unauthorized: authentication required` on push | Wrong secret type | `pushSecret` must be `kubernetes.io/dockerconfigjson` (`oc create secret docker-registry ...`), not SA token |
+| Runtime build can't pull builder image | S2I output name mismatch | Step 0 — S2I must push `rfipconfig-be-builder:latest` |
+| `oc get build` shows nothing / wrong kind | CRD name collision | Always `oc get builds.shipwright.io` |
+| `oc apply` fails on BuildRun | `generateName` + apply | Use `oc create` (Step 4 note) |
+| Console BuildRun page blank/crash | OCPBUGS-84214 | Use CLI/`shp`; check OperatorHub for operator update |
+
+### Legacy → Shipwright mapping (this migration)
+
+| Legacy BuildConfig element | Shipwright equivalent |
+|---|---|
+| Inline `source.dockerfile` | `runtime/Dockerfile` in Git |
+| base64 `entrypoint.sh` blob | `runtime/entrypoint.sh` in Git |
+| `source.images[].paths` (chained image copy) | Multi-stage `COPY --from=builder` |
+| `ImageStreamTag` output | `spec.output.image` + `pushSecret` |
+| `ImageChange` trigger (builder → runtime) | Manual sequencing now; Tekton Pipeline chaining next |
+| `noCache: true`, `forcePull: true` | Not in built-in strategy — add flags to `buildah-hl` script if needed (RFE BUILD-1746) |
+
+---
+---
+
+## 한국어 (Korean)
+
+### 사전 조건 (완료됨 — 확인만)
+
+| 확인 항목 | 명령어 | 기대 결과 |
+|---|---|---|
+| S2I 빌드 동작 | `oc get builds.shipwright.io rfipconfig-be-s2i-build -n openshift-builds` | 존재, 등록됨 |
+| SA + RBAC | `oc get rolebinding rb-pipeline-image-builder -n openshift-builds` | 존재 (`system:image-builder` → `pipeline`) |
+| 푸시 시크릿 | `oc get secret pipeline-push-secret -n openshift-builds -o jsonpath='{.type}'` | `kubernetes.io/dockerconfigjson` (service-account-token 타입이면 안 됨) |
+| CA configMap | `oc get configmap hobbylobby.corp -n openshift-builds` | 존재 |
+
+---
+
+### 0단계 — `rfipconfig-be.yaml` 출력 이미지 충돌 수정
+
+**파일:** `rfipconfig-be.yaml` — **첫 번째 Build** (`rfipconfig-be-s2i-build`)의 `spec.output.image` (현재:)
+
+```yaml
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be:latest
+```
+
+**다음으로 변경** (S2I 출력물은 최종 이미지가 아니라 *빌더* 이미지이고, 런타임 Build가 이를 소비함):
+
+```yaml
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be-builder:latest
+```
+
+**이유:** 현재 상태로는 두 Build 모두 `rfipconfig-be:latest`로 푸시하고, 런타임 Build는 아무도 만들지 않는 `rfipconfig-be-builder` 태그를 참조합니다.
+
+```bash
+oc apply -f rfipconfig-be.yaml   # 3단계 수정과 합쳐서 한 번에 apply해도 됨
+```
+
+---
+
+### 1단계 — 런타임 파일 Git 커밋
+
+`git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git` (`master` 브랜치) 클론에서 작업합니다.
+
+**1a. 디렉터리 생성:**
+
+```bash
+cd rfipconfig
+mkdir -p runtime
+```
+
+**1b. `runtime/entrypoint.sh` 생성** — 레거시 BuildConfig의 base64 블롭(`RUN echo -n 'IyEvYmluL3No...' | base64 -d` 라인)을 디코딩한 내용:
+
+```sh
+#!/bin/sh
+dotnet new tool-manifest
+dotnet tool install dotnet-certificate-tool
+dotnet certificate-tool add --cert /etc/pki/tls/private/auth-clientSecrets.pfx --password $AUTH_PASSWORD
+dotnet $APP_DLL --environment $ASPNETCORE_ENVIRONMENT
+```
+
+**1c. `runtime/Dockerfile` 생성** — 레거시 인라인 Dockerfile의 멀티스테이지 버전. `COPY --from=builder`가 BuildConfig의 `source.images[].paths` 체인 이미지 복사를 대체합니다:
+
+```dockerfile
+FROM image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be-builder:latest AS builder
+
+FROM quay.hobbylobby.corp/hl-images/hl-dotnet:60-rhel9-latest
+USER 0
+COPY --from=builder /opt/app-root/app.tar.gz .
+RUN tar -xzf app.tar.gz && rm app.tar.gz
+RUN yum -y install unixODBC --disablerepo=\* --enablerepo=ubi-9*
+RUN curl -fSL -o /tmp/ibm-iaccess.rpm http://hpsatellite01.hobbylobby.corp/pulp/isos/HL/Library/custom/Apache/Tomcat/ibm-iaccess-1.1.0.15-1.0.x86_64.rpm \
+ && rpm -i /tmp/ibm-iaccess.rpm && rm /tmp/ibm-iaccess.rpm
+COPY entrypoint.sh /tmp/entrypoint.sh
+RUN chgrp -R 0 /opt/app-root/* && chmod -R g=u /opt/app-root/* \
+ && chgrp 0 /tmp/entrypoint.sh && chmod 754 /tmp/entrypoint.sh
+USER 1001
+CMD ["/tmp/entrypoint.sh"]
+```
+
+> 1행 매핑: 레거시 BuildConfig는 `rfipconfig-be-builder-#{JENKINS_TAG}#:#{IMAGE_TAG}#`에서 `/opt/app-root/`를 복사했습니다. PoC에서는 `latest` 고정 태그이므로 빌더 이미지명을 하드코딩합니다. 이후 전략이 build-arg를 지원하면 `ARG BUILDER_IMAGE`로 파라미터화하세요.
+
+**1d. 커밋 & 푸시:**
+
+```bash
+git add runtime/
+git commit -m "Runtime image: Dockerfile + extracted entrypoint (BuildConfig migration)"
+git push origin master
+```
+
+---
+
+### 2단계 — `buildah-hl` ClusterBuildStrategy 생성
+
+기본 제공 `buildah` 전략은 사내 CA를 마운트하지 **않으므로** `quay.hobbylobby.corp`에서 pull 시 x509 오류가 발생합니다.
+
+**2a. 기본 전략 내보내기:**
+
+```bash
+oc get clusterbuildstrategy buildah -o yaml > buildah-hl.yaml
+```
+
+**2b. `buildah-hl.yaml` 편집:**
+
+| # | 파일 내 위치 | 수정 내용 |
+|---|---|---|
+| 1 | `metadata.name` | `buildah` → `buildah-hl` |
+| 2 | `metadata` 블록 | `resourceVersion`, `uid`, `creationTimestamp`, `generation` 삭제. `status:` 블록이 있으면 통째로 삭제 |
+| 3 | `spec.volumes` (spec 하단; 없으면 리스트 생성) | 아래 CA 볼륨 추가 |
+| 4 | `spec.steps` 각 스텝의 `volumeMounts` | 아래 CA volumeMount 추가 |
+| 5 | 메인 빌드 스텝의 스크립트 (`args` → `set -euo pipefail` 셸 블록) | `set -euo pipefail` 바로 다음 줄에 `update-ca-trust extract` 삽입 |
+
+볼륨 (수정 #3):
+
+```yaml
+  volumes:
+    - name: trust-manager-ca
+      configMap:
+        name: hobbylobby.corp
+        defaultMode: 420
+```
+
+volumeMount (수정 #4):
+
+```yaml
+        - mountPath: /etc/pki/ca-trust/extracted/trust-manager
+          name: trust-manager-ca
+          readOnly: true
+```
+
+> 이미 동작 중인 `s2i.yaml`의 패턴과 동일합니다 (`volumeMounts`/`volumes` 섹션 및 각 스텝 스크립트 최상단의 `update-ca-trust extract` 참고).
+
+**2c. 적용 및 확인:**
+
+```bash
+oc apply -f buildah-hl.yaml
+oc get clusterbuildstrategy buildah-hl
+```
+
+---
+
+### 3단계 — `rfipconfig-be.yaml` 런타임 Build 수정
+
+**파일:** `rfipconfig-be.yaml` — **두 번째 Build** (`rfipconfig-be-runtime-build`).
+
+| # | 필드 | 현재 값 | 변경 후 | 이유 |
+|---|---|---|---|---|
+| 1 | `spec.source.contextDir` | *(비어 있음)* | `runtime` | 1단계에서 만든 Git 디렉터리 지정 |
+| 2 | `spec.paramValues[0]` (`dockerfile`) | `Dockerfile` | *(유지)* | 경로는 `contextDir` 기준 상대 경로 |
+| 3 | `spec.paramValues[1]` (`builder-image`) | `image-registry...rfipconfig-be-builder:<need to be filled>` | **두 줄 삭제** | `builder-image`는 S2I 전용 파라미터. buildah 전략에는 없음 — FROM은 Dockerfile에 하드코딩됨 |
+| 4 | `spec.strategy.name` | `buildah-hl` | *(유지)* | 2단계 완료 후 존재함 |
+
+최종 런타임 Build 스펙:
+
+```yaml
+apiVersion: shipwright.io/v1beta1
+kind: Build
+metadata:
+  name: rfipconfig-be-runtime-build
+  namespace: openshift-builds
+spec:
+  env:
+    - name: SSL_CERT_FILE
+      value: /etc/pki/ca-trust/extracted/trust-manager/ca-certs.pem
+  source:
+    type: Git
+    git:
+      url: git@hlgithub.hobbylobby.corp:Warehouse/rfipconfig.git
+      cloneSecret: github-repo-ssh-key-rfipconfig-be
+      revision: master
+      depth: 1
+    contextDir: runtime
+  strategy:
+    name: buildah-hl
+    kind: ClusterBuildStrategy
+  paramValues:
+    - name: dockerfile
+      value: Dockerfile
+  output:
+    image: image-registry.openshift-image-registry.svc:5000/openshift-builds/rfipconfig-be:latest
+    pushSecret: pipeline-push-secret
+```
+
+적용 및 등록 확인:
+
+```bash
+oc apply -f rfipconfig-be.yaml
+oc get builds.shipwright.io -n openshift-builds
+# 두 Build 모두 REGISTERED=True 여야 함. (`oc get build`는 build.openshift.io로 해석되므로 사용 금지)
+```
+
+---
+
+### 4단계 — BuildRun 파일 생성
+
+**파일:** `buildrun-runtime.yaml` (신규). 재실행 시 이름 충돌을 피하려면 `generateName` 사용 — 따라서 반드시 `oc create` (절대 `oc apply` 금지):
+
+```yaml
+apiVersion: shipwright.io/v1beta1
+kind: BuildRun
+metadata:
+  generateName: rfipconfig-be-runtime-build-
+  namespace: openshift-builds
+spec:
+  build:
+    name: rfipconfig-be-runtime-build
+  serviceAccount: pipeline
+```
+
+(기존 S2I용 `buildrun.yaml`도 같은 방식으로 `generateName: rfipconfig-be-s2i-build-`로 바꾸는 것을 권장합니다.)
+
+---
+
+### 5단계 — 순차 실행
+
+```bash
+# 1. 빌더 이미지 (S2I)
+oc create -f buildrun.yaml -n openshift-builds
+
+# 2. Succeeded=True 될 때까지 대기
+oc get buildruns.shipwright.io -n openshift-builds -w
+
+# 3. 런타임 이미지 (buildah) — 2번 성공 후에만 실행
+oc create -f buildrun-runtime.yaml -n openshift-builds
+oc get buildruns.shipwright.io -n openshift-builds -w
+```
+
+> ⚠️ **OCPBUGS-84214** (operator v1.8.1): 웹 콘솔의 BuildRun 상세 페이지를 열지 마세요 — React error #310으로 크래시합니다. CLI만 사용:
+
+```bash
+oc describe buildrun <이름> -n openshift-builds
+oc logs -f -n openshift-builds -l buildrun.shipwright.io/name=<이름> --all-containers
+# 또는: shp buildrun logs <이름> -n openshift-builds --follow
+```
+
+**출력 이미지 확인:**
+
+```bash
+oc get istag rfipconfig-be:latest -n openshift-builds
+```
+
+---
+
+### 트러블슈팅 요약
+
+| 증상 | 원인 | 해결 |
+|---|---|---|
+| `x509: certificate signed by unknown authority` | CA 미마운트 / 미추출 | 2단계 수정 #3–#5 확인; Build CR의 `SSL_CERT_FILE` env 확인 |
+| push 시 `unauthorized: authentication required` | 시크릿 타입 오류 | `pushSecret`은 `kubernetes.io/dockerconfigjson` 타입이어야 함 (`oc create secret docker-registry ...`), SA 토큰 불가 |
+| 런타임 빌드가 빌더 이미지를 pull 못 함 | S2I 출력 이름 불일치 | 0단계 — S2I가 `rfipconfig-be-builder:latest`로 푸시해야 함 |
+| `oc get build`가 비어 있거나 다른 종류 | CRD 이름 충돌 | 항상 `oc get builds.shipwright.io` 사용 |
+| BuildRun에 `oc apply` 실패 | `generateName` + apply | `oc create` 사용 (4단계 참고) |
+| 콘솔 BuildRun 페이지 크래시 | OCPBUGS-84214 | CLI/`shp` 사용; OperatorHub에서 operator 업데이트 확인 |
+
+### 레거시 → Shipwright 매핑 (이번 마이그레이션)
+
+| 레거시 BuildConfig 요소 | Shipwright 대응 |
+|---|---|
+| 인라인 `source.dockerfile` | Git의 `runtime/Dockerfile` |
+| base64 `entrypoint.sh` 블롭 | Git의 `runtime/entrypoint.sh` |
+| `source.images[].paths` (체인 이미지 복사) | 멀티스테이지 `COPY --from=builder` |
+| `ImageStreamTag` 출력 | `spec.output.image` + `pushSecret` |
+| `ImageChange` 트리거 (빌더 → 런타임) | 현재는 수동 순차 실행; 다음 단계에서 Tekton Pipeline 체이닝 |
+| `noCache: true`, `forcePull: true` | 기본 전략에 없음 — 필요 시 `buildah-hl` 스크립트에 플래그 직접 추가 (RFE BUILD-1746) |
+
+---
+
+### Change history / 변경 이력
+
+| Date | Change |
+|---|---|
+| 2026-08-05 | Initial runbook: runtime build migration steps (EN/KO) |
